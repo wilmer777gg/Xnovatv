@@ -44,42 +44,24 @@ from telegram.ext import (
 )
 from telegram.error import TimedOut, NetworkError
 
-# ========== CARGAR .env SOLO EN DESARROLLO LOCAL ==========
-# En producción (Railway/Render), las variables vienen del sistema
-if os.path.exists('.env'):
-    try:
-        from dotenv import load_dotenv
-        load_dotenv()
-        print("📝 Archivo .env cargado (modo local)")
-    except ImportError:
-        print("⚠️ python-dotenv no instalado, usando variables del sistema")
-else:
-    print("🌐 Usando variables de entorno del sistema (producción)")
-
-# ========== CONFIGURACIÓN DESDE VARIABLES DE ENTORNO ==========
-TOKEN = os.environ.get("TOKEN")
-if not TOKEN:
-    raise RuntimeError("❌ La variable TOKEN no está definida")
-
-ADMIN_USER_ID = int(os.environ.get("ADMIN_USER_ID", "0"))
-if ADMIN_USER_ID == 0:
-    raise RuntimeError("❌ La variable ADMIN_USER_ID no está definida")
-
-# Variables opcionales
-ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "")
-WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "")
-
-# ========== VARIABLES DE GITHUB ==========
-GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
-GITHUB_OWNER = os.environ.get("GITHUB_OWNER")
-GITHUB_REPO = os.environ.get("GITHUB_REPO")
-USE_GITHUB_SYNC = os.getenv("USE_GITHUB_SYNC", "false").lower() == "true"
-
 # ========== INICIALIZAR SISTEMA ==========
 sys.path.append(os.path.dirname(__file__))
 
 from login import inicializar_sistema, AuthSystem, requiere_login, requiere_admin, VERSION
 from menus_principal import menu_principal, menu_bienvenida
+
+# ========== VARIABLES DE ENTORNO PARA GITHUB ==========
+TOKEN = os.environ.get("TOLEN")
+if note TOKEN:
+    raise RuntimeError("TOKEN no definido")
+    
+ADMIN_USER_ID = int(os.environ.get("ADMIN_USER_ID" , "0"))
+
+
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
+GITHUB_OWNER = os.environ.get("GITHUB_OWNER")
+GITHUB_REPO = os.environ.get("GITHUB_REPO")
+USE_GITHUB_SYNC = os.getenv("USE_GITHUB_SYNC", "true").lower() == "true"
 
 # ✅ CREA TODOS LOS JSON Y VERIFICA TODO AL INICIAR
 inicializar_sistema()
@@ -103,6 +85,8 @@ logger = logging.getLogger(__name__)
 def verificar_configuracion_github():
     """🔍 Verifica la configuración de GitHub al iniciar"""
     try:
+        from login import GITHUB_TOKEN, GITHUB_OWNER, GITHUB_REPO, USE_GITHUB_SYNC
+        
         if USE_GITHUB_SYNC:
             if GITHUB_TOKEN and GITHUB_OWNER and GITHUB_REPO:
                 logger.info("✅ GitHub Sync ACTIVADO - Respaldos en la nube")
@@ -355,10 +339,10 @@ def main():
     print("✅ Backup - Exportar/Importar datos" if BACKUP_ACTIVO else "⚠️ Backup - No disponible")
     print("=" * 60)
     
-    # Crear aplicación
+    # Crear aplicación (app SOLO EXISTE DENTRO DE main)
     app = Application.builder().token(TOKEN).build()
     
-    # Configurar timeouts (según versión)
+    # Configurar timeouts (AHORA SÍ app existe)
     try:
         app.bot.request._request_timeout = 30
         app.bot.request.connect_timeout = 30
