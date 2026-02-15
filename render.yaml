@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: astroio-bot
+    env: python
+    plan: free
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: python AstroIO.py
+    
+    envVars:
+      - key: TOKEN
+        sync: false  # Se configura manualmente en Render
+      - key: ADMIN_USER_ID
+        sync: false
+      - key: WEBHOOK_URL
+        value: ""
+      - key: USE_GITHUB_SYNC
+        value: "true"
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: GITHUB_OWNER
+        sync: false
+      - key: GITHUB_REPO
+        sync: false
+      - key: GITHUB_BRANCH
+        value: "main"

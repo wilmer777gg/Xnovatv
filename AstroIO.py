@@ -33,7 +33,6 @@
 import logging
 import os
 import sys
-import time
 import asyncio
 from datetime import datetime
 
@@ -50,18 +49,28 @@ sys.path.append(os.path.dirname(__file__))
 from login import inicializar_sistema, AuthSystem, requiere_login, requiere_admin, VERSION
 from menus_principal import menu_principal, menu_bienvenida
 
-# ========== VARIABLES DE ENTORNO PARA GITHUB ==========
-TOKEN = os.environ.get("TOLEN")
-if note TOKEN:
-    raise RuntimeError("TOKEN no definido")
-    
-ADMIN_USER_ID = int(os.environ.get("ADMIN_USER_ID" , "0"))
+# ========== VARIABLES DE ENTORNO ==========
+TOKEN = os.environ.get("TOKEN")
+if not TOKEN:
+    raise RuntimeError("❌ La variable TOKEN no está definida")
 
+try:
+    ADMIN_USER_ID = int(os.environ.get("ADMIN_USER_ID", "0"))
+except ValueError:
+    ADMIN_USER_ID = 0
+if ADMIN_USER_ID == 0:
+    raise RuntimeError("❌ La variable ADMIN_USER_ID no está definida o no es válida")
 
+# Opcionales
+ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "")
+WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "")  # Si está definida, se usa webhook
+PORT = int(os.environ.get("PORT", "10000"))       # Puerto para webhook (Render asigna 10000 por defecto)
+
+# Variables de GitHub
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 GITHUB_OWNER = os.environ.get("GITHUB_OWNER")
 GITHUB_REPO = os.environ.get("GITHUB_REPO")
-USE_GITHUB_SYNC = os.getenv("USE_GITHUB_SYNC", "true").lower() == "true"
+USE_GITHUB_SYNC = os.getenv("USE_GITHUB_SYNC", "false").lower() == "true"
 
 # ✅ CREA TODOS LOS JSON Y VERIFICA TODO AL INICIAR
 inicializar_sistema()
@@ -85,8 +94,6 @@ logger = logging.getLogger(__name__)
 def verificar_configuracion_github():
     """🔍 Verifica la configuración de GitHub al iniciar"""
     try:
-        from login import GITHUB_TOKEN, GITHUB_OWNER, GITHUB_REPO, USE_GITHUB_SYNC
-        
         if USE_GITHUB_SYNC:
             if GITHUB_TOKEN and GITHUB_OWNER and GITHUB_REPO:
                 logger.info("✅ GitHub Sync ACTIVADO - Respaldos en la nube")
@@ -339,10 +346,10 @@ def main():
     print("✅ Backup - Exportar/Importar datos" if BACKUP_ACTIVO else "⚠️ Backup - No disponible")
     print("=" * 60)
     
-    # Crear aplicación (app SOLO EXISTE DENTRO DE main)
+    # Crear aplicación
     app = Application.builder().token(TOKEN).build()
     
-    # Configurar timeouts (AHORA SÍ app existe)
+    # Configurar timeouts (según versión)
     try:
         app.bot.request._request_timeout = 30
         app.bot.request.connect_timeout = 30
@@ -427,33 +434,56 @@ def main():
     # ========== ERRORES ==========
     app.add_error_handler(error_handler)
     
-    print("\n🚀 Iniciando polling...")
+    print("\n🚀 Iniciando bot...")
     print("=" * 60 + "\n")
     
-    # Intentar conexión con reintentos
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    
-    try:
-        # Verificar conexión antes de iniciar
-        if loop.run_until_complete(verificar_conexion(app)):
-            logger.info("✅ Conexión verificada. Iniciando bot...")
-            # Iniciar polling
-            app.run_polling(
-                allowed_updates=Update.ALL_TYPES,
-                drop_pending_updates=True
+    # Decidir modo: webhook si WEBHOOK_URL está definida, sino polling
+    if WEBHOOK_URL:
+        # Configurar webhook
+        async def setup_webhook():
+            webhook_url = f"{WEBHOOK_URL.rstrip('/')}/{TOKEN}"
+            await app.bot.set_webhook(url=webhook_url)
+            logger.info(f"✅ Webhook configurado en {webhook_url}")
+            # Iniciar webhook (corriendo en el puerto asignado)
+            await app.start_webhook(
+                listen="0.0.0.0",
+                port=PORT,
+                url_path=TOKEN,
+                webhook_url=webhook_url
             )
-        else:
-            logger.error("❌ No se pudo establecer conexión. Saliendo...")
-            print("\n❌ Error de conexión. Verifica tu internet y reintenta.")
-    except KeyboardInterrupt:
-        print("\n👋 Bot detenido manualmente")
-    except Exception as e:
-        print(f"\n❌ Error crítico: {e}")
-        import traceback
-        traceback.print_exc()
-    finally:
-        loop.close()
+        
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(setup_webhook())
+            logger.info(f"🚀 Bot iniciado en modo webhook en puerto {PORT}")
+            loop.run_forever()
+        except KeyboardInterrupt:
+            print("\n👋 Bot detenido manualmente")
+        finally:
+            loop.close()
+    else:
+        # Modo polling (local)
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            if loop.run_until_complete(verificar_conexion(app)):
+                logger.info("✅ Conexión verificada. Iniciando bot en modo polling...")
+                app.run_polling(
+                    allowed_updates=Update.ALL_TYPES,
+                    drop_pending_updates=True
+                )
+            else:
+                logger.error("❌ No se pudo establecer conexión. Saliendo...")
+                print("\n❌ Error de conexión. Verifica tu internet y reintenta.")
+        except KeyboardInterrupt:
+            print("\n👋 Bot detenido manualmente")
+        except Exception as e:
+            print(f"\n❌ Error crítico: {e}")
+            import traceback
+            traceback.print_exc()
+        finally:
+            loop.close()
 
 if __name__ == "__main__":
     try:
