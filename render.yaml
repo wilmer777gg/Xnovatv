@@ -2,7 +2,7 @@ services:
   - type: web
     name: astroio-bot
     env: python
-   pythonVersion: 3.12.12
+    pythonVersion: 3.12.12
     plan: free
     region: oregon
     buildCommand: pip install -r requirements.txt
