@@ -1,0 +1,18 @@
+{
+  "energia": {
+    "nombre": "Planta de Energía",
+    "nivel_maximo": 100
+  },
+  "laboratorio": {
+    "nombre": "Laboratorio",
+    "nivel_maximo": 30
+  },
+  "hangar": {
+    "nombre": "Hangar",
+    "nivel_maximo": 20
+  },
+  "terraformer": {
+    "nombre": "Terraformer",
+    "nivel_maximo": 10
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "1858379083": [
+    {
+      "tipo": "metal",
+      "nivel_actual": 0,
+      "nivel_objetivo": 1,
+      "inicio": "2026-02-13 18:20:17",
+      "fin": "2026-02-13 18:21:17",
+      "tiempo_total": 60,
+      "tiempo_restante": 35.741485,
+      "progreso": 24.258515000000003,
+      "costo": {
+        "metal": 60,
+        "cristal": 15
+      }
+    }
+  ]
+}

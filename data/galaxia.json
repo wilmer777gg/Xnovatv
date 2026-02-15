@@ -1,0 +1,35 @@
+{
+  "7470037078": {
+    "user_id": 7470037078,
+    "username": "@Admin",
+    "coordenadas": {
+      "galaxia": 1,
+      "sistema": 67,
+      "planeta": 3,
+      "nombre": "Planeta 1:67:3"
+    },
+    "fecha_asignacion": "2026-02-13 07:56:35"
+  },
+  "1858379083": {
+    "user_id": 1858379083,
+    "username": "@Yan Carlos",
+    "coordenadas": {
+      "galaxia": 1,
+      "sistema": 55,
+      "planeta": 1,
+      "nombre": "Planeta 1:55:1"
+    },
+    "fecha_asignacion": "2026-02-13 18:13:09"
+  },
+  "1196575284": {
+    "user_id": 1196575284,
+    "username": "@GıιɖąɾԵʂ༒",
+    "coordenadas": {
+      "galaxia": 1,
+      "sistema": 12,
+      "planeta": 3,
+      "nombre": "Planeta 1:12:3"
+    },
+    "fecha_asignacion": "2026-02-14 15:17:36"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "version": "v2.4.0",
+  "nombre_bot": "AstroIO",
+  "admin_principal": 7470037078,
+  "recursos_iniciales": {
+    "metal": 200,
+    "cristal": 100,
+    "deuterio": 0,
+    "materia_oscura": 0,
+    "nxt20": 0,
+    "energia": 0
+  },
+  "mantenimiento": false,
+  "fecha_inicio": "2026-02-11 19:13:48"
+}

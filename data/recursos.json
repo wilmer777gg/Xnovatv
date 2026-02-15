@@ -1,0 +1,26 @@
+{
+  "7470037078": {
+    "metal": 14,
+    "cristal": 42,
+    "deuterio": 0,
+    "materia_oscura": 0,
+    "nxt20": 0,
+    "energia": 0
+  },
+  "1858379083": {
+    "metal": 140,
+    "cristal": 85,
+    "deuterio": 0,
+    "materia_oscura": 0,
+    "nxt20": 0,
+    "energia": 0
+  },
+  "1196575284": {
+    "metal": 200,
+    "cristal": 100,
+    "deuterio": 0,
+    "materia_oscura": 0,
+    "nxt20": 0,
+    "energia": 0
+  }
+}

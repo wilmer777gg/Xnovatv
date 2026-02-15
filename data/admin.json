@@ -1,0 +1,21 @@
+{
+  "7470037078": {
+    "username": "@7470037078",
+    "nombre": "Admin Principal",
+    "fecha_registro": "2026-02-13 17:09:25",
+    "agregado_por": "sistema",
+    "permisos": [
+      "todos"
+    ]
+  },
+  "1196575284": {
+    "username": "@GıιɖąɾԵʂ༒",
+    "nombre": "GıιɖąɾԵʂ༒",
+    "fecha_registro": "2026-02-14 15:46:09",
+    "agregado_por": 7470037078,
+    "agregado_por_username": "@Admin",
+    "permisos": [
+      "basicos"
+    ]
+  }
+}

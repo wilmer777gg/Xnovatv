@@ -1,0 +1,41 @@
+{
+  "7470037078": {
+    "id": 7470037078,
+    "user_id": 7470037078,
+    "username": "@Admin",
+    "username_raw": "Admin",
+    "nombre": "Admin",
+    "fecha_registro": "2026-02-13 17:09:25",
+    "ultima_actualizacion": "2026-02-13 17:09:25",
+    "ultima_actualizacion_recursos": "2026-02-13 17:09:25",
+    "autorizado": true,
+    "version": "v2.3.7",
+    "fecha_autorizacion": "2026-02-13 17:09:25"
+  },
+  "1858379083": {
+    "id": 1858379083,
+    "user_id": 1858379083,
+    "username": "@Yan Carlos",
+    "username_raw": "Yan Carlos",
+    "nombre": "Yan Carlos",
+    "fecha_registro": "2026-02-13 17:12:20",
+    "ultima_actualizacion": "2026-02-13 17:12:20",
+    "ultima_actualizacion_recursos": "2026-02-13 18:13:09",
+    "autorizado": true,
+    "version": "v2.3.7",
+    "fecha_autorizacion": "2026-02-13 18:13:09"
+  },
+  "1196575284": {
+    "id": 1196575284,
+    "user_id": 1196575284,
+    "username": "@GıιɖąɾԵʂ༒",
+    "username_raw": "GıιɖąɾԵʂ༒",
+    "nombre": "GıιɖąɾԵʂ༒",
+    "fecha_registro": "2026-02-14 15:16:33",
+    "ultima_actualizacion": "2026-02-14 15:16:33",
+    "ultima_actualizacion_recursos": "2026-02-14 15:17:36",
+    "autorizado": true,
+    "version": "v2.4.0",
+    "fecha_autorizacion": "2026-02-14 15:17:36"
+  }
+}
