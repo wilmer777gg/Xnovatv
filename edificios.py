@@ -8,7 +8,7 @@
 #██║  ██║███████║   ██║   ██║  ██║██║  ██║███████╗███████║
 #╚═╝  ╚═╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚══════╝
 
-#🚀 ASTRO.IO v2.4.0 🚀
+#🚀 ASTRO.IO v2.4.5 🚀
 #🏗️ edificios.py - SISTEMA DE CONSTRUCCIÓN CON COLAS EN TIEMPO REAL
 #===========================================================
 #✅ MISMO ESTILO que menú principal
@@ -125,7 +125,7 @@ CONSTRUCCIONES = {
         "icono_corto": "⚡",
         "descripcion": "Genera energía para todas tus estructuras.",
         "costo_base": {"metal": 150, "cristal": 50},
-        "produccion_base": 50,
+        "produccion_base": 100,
         "consumo_energia": 0,
         "campos": 1,
         "max_nivel": 100,

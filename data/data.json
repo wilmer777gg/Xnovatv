@@ -6,8 +6,8 @@
     "username_raw": "Admin",
     "nombre": "Admin",
     "fecha_registro": "2026-02-13 17:09:25",
-    "ultima_actualizacion": "2026-02-13 17:09:25",
-    "ultima_actualizacion_recursos": "2026-02-13 17:09:25",
+    "ultima_actualizacion": "2026-02-15 21:21:08",
+    "ultima_actualizacion_recursos": "2026-02-15 21:21:08",
     "autorizado": true,
     "version": "v2.3.7",
     "fecha_autorizacion": "2026-02-13 17:09:25"
@@ -37,5 +37,18 @@
     "autorizado": true,
     "version": "v2.4.0",
     "fecha_autorizacion": "2026-02-14 15:17:36"
+  },
+  "8344418898": {
+    "id": 8344418898,
+    "user_id": 8344418898,
+    "username": "@Orestes",
+    "username_raw": "Orestes",
+    "nombre": "Orestes",
+    "fecha_registro": "2026-02-17 12:33:02",
+    "ultima_actualizacion": "2026-02-17 14:07:39",
+    "ultima_actualizacion_recursos": "2026-02-17 14:07:39",
+    "autorizado": true,
+    "version": "v2.4.0",
+    "fecha_autorizacion": "2026-02-17 12:33:20"
   }
 }

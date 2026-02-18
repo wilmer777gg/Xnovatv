@@ -13,5 +13,10 @@
     "metal": 0,
     "cristal": 0,
     "deuterio": 0
+  },
+  "8344418898": {
+    "metal": 5,
+    "cristal": 1,
+    "deuterio": 5
   }
 }

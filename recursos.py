@@ -11,11 +11,11 @@
 #🚀 ASTRO.IO v2.4.0 🚀
 #💰 recursos.py - SISTEMA DE RECURSOS Y PRODUCCIÓN AUTOMÁTICA
 #============================================================
-#✅ PRODUCCIÓN AUTOMÁTICA - Se calcula cada vez que se consulta
+#✅ PRODUCCIÓN BASADA EN TIEMPO REAL DEL SERVIDOR
 #✅ RECURSOS INICIALES SINCRONIZADOS con login.py (200M, 100C, 0D)
 #✅ BALANCE ENERGÉTICO - Consumo vs producción con penalización
 #✅ ENERGÍA NEGATIVA - Reduce producción de minas proporcionalmente
-#✅ TIEMPO REAL - Siempre lee/escribe JSON directamente
+#✅ FUNCIONA INCLUSO SI RENDER DUERME EL SERVICIO
 #============================================================
 
 import os
@@ -36,6 +36,9 @@ RECURSOS_FILE = os.path.join(DATA_DIR, "recursos.json")
 MINAS_FILE = os.path.join(DATA_DIR, "minas.json")
 EDIFICIOS_USUARIO_FILE = os.path.join(DATA_DIR, "edificios_usuario.json")
 DATA_FILE = os.path.join(DATA_DIR, "data.json")
+
+# Límite máximo de minutos a acumular para evitar desbordamientos (30 días)
+MAX_MINUTOS_ACUMULABLES = 30 * 24 * 60  # 43200 minutos
 
 # ================= FUNCIONES DE RECURSOS =================
 
@@ -192,7 +195,7 @@ def obtener_produccion(user_id: int) -> dict:
         }
     }
 
-# ================= 🔥 NUEVA FUNCIÓN - CONSUMO DE ENERGÍA CORREGIDA =================
+# ================= 🔥 FUNCIÓN - CONSUMO DE ENERGÍA =================
 
 def obtener_consumo_energia(user_id: int) -> int:
     """⚡ Calcula el consumo total de energía (minas + edificios)"""
@@ -209,16 +212,14 @@ def obtener_consumo_energia(user_id: int) -> int:
     consumo_total += obtener_nivel_edificio(user_id, "terraformer") * 50
     
     # La planta de energía NO consume, solo produce
-    # (Eliminada la línea redundante)
-    
     return consumo_total
 
 # ================= 🔥 FUNCIÓN PRINCIPAL - ACTUALIZAR RECURSOS CON ENERGÍA =================
 
 def actualizar_recursos_tiempo(user_id: int) -> dict:
     """
-    ⏰ ACTUALIZA LOS RECURSOS BASADO EN EL TIEMPO TRANSCURRIDO
-    AHORA con ajuste por energía negativa
+    ⏰ ACTUALIZA LOS RECURSOS BASADO EN EL TIEMPO REAL TRANSCURRIDO
+    Funciona incluso si el bot ha estado dormido por horas o días.
     """
     user_id_str = str(user_id)
     
@@ -229,69 +230,75 @@ def actualizar_recursos_tiempo(user_id: int) -> dict:
     ultima = obtener_ultima_actualizacion(user_id)
     ahora = datetime.now()
     
-    # 3. Calcular minutos transcurridos
+    # 3. Calcular minutos transcurridos (tiempo real)
     minutos_transcurridos = (ahora - ultima).total_seconds() / 60
     
-    # 4. LIMITAR a máximo 60 minutos para evitar producciones enormes
-    if minutos_transcurridos > 60:
-        minutos_transcurridos = 60
-    elif minutos_transcurridos < 0:
+    # 4. Evitar valores negativos (por posibles desfases de reloj)
+    if minutos_transcurridos < 0:
         minutos_transcurridos = 0
     
-    # 5. Obtener producción base
+    # 5. Límite de seguridad para evitar números excesivamente grandes
+    #    (por si el bot estuvo meses sin ejecutarse)
+    if minutos_transcurridos > MAX_MINUTOS_ACUMULABLES:
+        minutos_transcurridos = MAX_MINUTOS_ACUMULABLES
+        logger.warning(f"⚠️ Usuario {user_id} acumuló más de 30 días de producción. Limitando a 30 días.")
+    
+    # 6. Si no ha pasado tiempo significativo, devolver recursos sin cambios
+    if minutos_transcurridos < 0.1:  # menos de 6 segundos
+        return {
+            "recursos": recursos,
+            "produccion": obtener_produccion(user_id),
+            "producido": {"metal": 0, "cristal": 0, "deuterio": 0},
+            "minutos": 0,
+            "consumo": obtener_consumo_energia(user_id),
+            "produccion_energia": 0,
+            "energia_disponible": recursos.get("energia", 0),
+            "estado_energia": "✅",
+            "factor_produccion": {"metal": 1.0, "cristal": 1.0, "deuterio": 1.0}
+        }
+    
+    # 7. Obtener producción base
     produccion = obtener_produccion(user_id)
     
-    # 6. Calcular consumo y energía disponible
+    # 8. Calcular consumo y energía disponible
     consumo = obtener_consumo_energia(user_id)
-    produccion_energia = produccion["por_minuto"]["energia"]
+    produccion_energia = produccion["por_hora"]["energia"]
     energia_disponible = produccion_energia - consumo
     
-    # 7. 🔥 CALCULAR FACTOR DE PRODUCCIÓN SEGÚN ENERGÍA
+    # 9. CALCULAR FACTOR DE PRODUCCIÓN SEGÚN ENERGÍA
     if energia_disponible >= 0:
-        # Energía suficiente - producción normal
-        factor_metal = 1.0
-        factor_cristal = 1.0
-        factor_deuterio = 1.0
+        factor_metal = factor_cristal = factor_deuterio = 1.0
         estado_energia = "✅"
     else:
-        # Energía negativa - penalizar producción
-        # El factor es proporcional al déficit
         if consumo > 0:
-            # Factor = 1 + (energia_negativa / consumo_total)
-            # Ejemplo: energía = -50, consumo = 100 → factor = 0.5
             factor_base = 1 + (energia_disponible / consumo)
-            factor_base = max(0.1, min(1.0, factor_base))  # Entre 10% y 100%
+            factor_base = max(0.1, min(1.0, factor_base))
         else:
-            factor_base = 0.1  # Si no hay consumo, mínimo
-        
-        # Mismo factor para todas las minas
-        factor_metal = factor_base
-        factor_cristal = factor_base
-        factor_deuterio = factor_base
+            factor_base = 0.1
+        factor_metal = factor_cristal = factor_deuterio = factor_base
         estado_energia = "⚠️"
-        
         logger.info(f"⚠️ Energía negativa para {AuthSystem.obtener_username(user_id)}: {energia_disponible:.0f}, factor: {factor_base:.2f}")
     
-    # 8. CALCULAR producción real con factores
+    # 10. CALCULAR producción real con factores
     metal_producido = int(produccion["por_minuto"]["metal"] * minutos_transcurridos * factor_metal)
     cristal_producido = int(produccion["por_minuto"]["cristal"] * minutos_transcurridos * factor_cristal)
     deuterio_producido = int(produccion["por_minuto"]["deuterio"] * minutos_transcurridos * factor_deuterio)
     
-    # 9. SUMAR a los recursos existentes
+    # 11. SUMAR a los recursos existentes
     recursos["metal"] = recursos.get("metal", 0) + metal_producido
     recursos["cristal"] = recursos.get("cristal", 0) + cristal_producido
     recursos["deuterio"] = recursos.get("deuterio", 0) + deuterio_producido
     
-    # 10. Actualizar energía (guardamos el balance actual)
-    recursos["energia"] = energia_disponible  # Este valor puede ser negativo
+    # 12. Actualizar energía (guardamos el balance actual)
+    recursos["energia"] = energia_disponible
     
-    # 11. GUARDAR en recursos.json
+    # 13. GUARDAR en recursos.json (checkpoint)
     guardar_recursos_usuario(user_id, recursos)
     
-    # 12. GUARDAR timestamp
+    # 14. GUARDAR timestamp (para próxima vez)
     guardar_ultima_actualizacion(user_id)
     
-    # 13. LOG con información de energía
+    # 15. LOG con información de energía
     if minutos_transcurridos > 0.1:
         logger.info(
             f"⏰ {AuthSystem.obtener_username(user_id)}: "
@@ -363,7 +370,7 @@ async def mostrar_recursos(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🧪 Sint. Deuterio Nv.{produccion['niveles']['deuterio']}: +{abreviar_numero(produccion['por_hora']['deuterio'])}/h\n"
         f"⚡ Planta Energía Nv.{produccion['niveles']['energia']}: +{abreviar_numero(produccion['por_hora']['energia'])}/h\n\n"
         f"⚡ <b>BALANCE ENERGÉTICO:</b>\n"
-        f"   Producción: +{abreviar_numero(resultado['produccion_energia']*60)}/h\n"
+        f"   Producción: +{abreviar_numero(resultado['produccion_energia'])}/h\n"
         f"   Consumo: -{abreviar_numero(resultado['consumo'])}/h\n"
         f"   Balance: {resultado['estado_energia']} {abreviar_numero(resultado['energia_disponible'])}/h\n\n"
         f"⏱️ Última actualización: hace {minutos:.1f} min\n"
@@ -451,4 +458,3 @@ __all__ = [
     'obtener_produccion',
     'obtener_consumo_energia'
 ]
-

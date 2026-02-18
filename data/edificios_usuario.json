@@ -16,5 +16,11 @@
     "laboratorio": 0,
     "hangar": 0,
     "terraformer": 0
+  },
+  "8344418898": {
+    "energia": 5,
+    "laboratorio": 5,
+    "hangar": 5,
+    "terraformer": 0
   }
 }

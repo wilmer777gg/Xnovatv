@@ -8,7 +8,7 @@
 #██║  ██║███████║   ██║   ██║  ██║██║  ██║███████╗███████║
 #╚═╝  ╚═╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚══════╝
 
-#🚀 ASTRO.IO v2.4.0 🚀
+#🚀 ASTRO.IO v2.4.5 🚀
 #👑 usuarios.py - GESTIÓN DE USUARIOS Y PANEL DE ADMINISTRACIÓN
 #===========================================================
 #✅ NOTIFICACIONES A ADMIN CORREGIDAS
@@ -939,7 +939,6 @@ async def mostrar_panel_admin(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"      {'👑 ADMIN PRINCIPAL' if es_principal else '👤 ADMINISTRADOR'}\n\n"
         f"🖥️ <b>ESTADO DEL SERVIDOR</b>\n"
         f"   └ 🔧 MANTENIMIENTO: {estado_mant}\n"
-        f"      ⚠️ Los administradores NO se ven afectados\n\n"
         f"⚙️ <b>HERRAMIENTAS DE ADMINISTRACIÓN</b>\n"
     )
     

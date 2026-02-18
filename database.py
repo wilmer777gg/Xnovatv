@@ -8,7 +8,7 @@
 #██║  ██║███████║   ██║   ██║  ██║██║  ██║███████╗███████║
 #╚═╝  ╚═╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚══════╝
 
-#🚀 ASTRO.IO v2.4.0 🚀
+#🚀 ASTRO.IO v2.4.5 🚀
 #💾 database.py - GESTIÓN DE ARCHIVOS JSON CON PERSISTENCIA HÍBRIDA
 #=======================================
 #✅ Intenta GitHub primero

@@ -8,12 +8,13 @@
 #██║  ██║███████║   ██║   ██║  ██║██║  ██║███████╗███████║
 #╚═╝  ╚═╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚══════╝
 
-#🚀 ASTRO.IO v2.4.0 🚀
+#🚀 ASTRO.IO v2.4.5 🚀
 #🎯 callback_handlers.py - ÚNICO PUNTO DE ENTRADA PARA TODOS LOS CALLBACKS
 #===========================================================
 #✅ MISMO ESTILO que menú principal
 #✅ MANEJO CORRECTO de solicitudes pendientes
 #✅ NUEVO CALLBACK PARA MANTENIMIENTO
+#✅ INTEGRACIÓN CON MERCADO
 #===========================================================
 
 import logging
@@ -60,6 +61,7 @@ from base_flotas import (
     reporte_misiones_activas,
     reporte_historial_bajas
 )
+from mercado import mercado_callback_handler  # 👈 NUEVO: importar mercado
 
 logger = logging.getLogger(__name__)
 
@@ -171,6 +173,10 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ========== PUNTUACIÓN ==========
     elif data == "menu_puntuacion" or data.startswith("puntuacion_") or data.startswith("ranking_"):
         await puntuacion_callback_handler(update, context)
+    
+    # ========== MERCADO ==========
+    elif data.startswith("mercado_"):                      # 👈 NUEVA RAMA
+        await mercado_callback_handler(update, context)
     
     # ========== ADMIN - PANEL PRINCIPAL ==========
     elif data == "menu_admin":

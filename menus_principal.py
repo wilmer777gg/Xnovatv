@@ -8,12 +8,13 @@
 #██║  ██║███████║   ██║   ██║     ██║  ██║███████╗███████╗
 #╚═╝  ╚═╝╚══════╝   ╚═╝   ╚═╝     ╚═╝  ╚═╝╚══════╝╚══════╝
 
-#🚀 ASTRO.IO v2.4.0 🚀
+#🚀 ASTRO.IO v2.4.5 🚀
 #🎯 menú_principal.py - INTERFAZ GALÁCTICA DEFINITIVA
 #✅ Datos 100% reales desde JSON
 #✅ Barras de progreso [██░] 3 caracteres
 #✅ COLAS DINÁMICAS - Solo muestran lo que hay en cola
 #✅ TIEMPOS CORREGIDOS - Formato legible (18s, 2m, 1h 30m)
+#✅ MERCADO NEGRO - Botón para acceder al sistema de mercado
 #===============================================================
 
 import os
@@ -258,6 +259,7 @@ async def menu_principal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     🏠 MENÚ PRINCIPAL - INTERFAZ GALÁCTICA DEFINITIVA
     ✅ COLAS DINÁMICAS - Solo muestra lo que hay en cola
+    ✅ MERCADO NEGRO - Botón añadido
     """
     query = update.callback_query
     if not query:
@@ -322,7 +324,7 @@ async def menu_principal(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
         f"\n"
         f"🔩 {metal}  💎 {cristal}  🧪 {deuterio}\n"
-        f"⚡ {energia}   🌑 {materia}  🛰️ {nxt}\n"
+        f"⚡ {energia}   🌑 {materia}  🪙 {nxt}\n"
         f"\n"
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
         f"\n"
@@ -357,7 +359,7 @@ async def menu_principal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mensaje += f"\n"
     mensaje += f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀"
     
-    # ========== CONSTRUIR TECLADO ==========
+    # ========== CONSTRUIR TECLADO CON BOTÓN DE MERCADO ==========
     es_admin = AuthSystem.es_admin(user_id)
     
     keyboard = [
@@ -378,6 +380,7 @@ async def menu_principal(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("📖 GUÍA", callback_data="guia_desbloqueo"),
             InlineKeyboardButton("🏆 PUNTUACIÓN", callback_data="menu_puntuacion")
         ],
+        [InlineKeyboardButton("💰 MERCADO NEGRO", callback_data="mercado_principal")],  # 👈 NUEVO BOTÓN
     ]
     
     # Si hay colas, agregar botón para ver cola completa
@@ -411,7 +414,7 @@ async def menu_principal(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ================= BIENVENIDA PARA USUARIOS NUEVOS =================
 
 async def menu_bienvenida(context, user_id: int, username: str = None):
-    """🎉 BIENVENIDA - Mismo estilo que menú principal"""
+    """🎉 BIENVENIDA - Mismo estilo que menú principal con botón de mercado"""
     username_tag = AuthSystem.formatear_username(user_id, username)
     
     # Generar coordenadas
@@ -435,7 +438,7 @@ async def menu_bienvenida(context, user_id: int, username: str = None):
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
         f"\n"
         f"🔩 200  💎 100  🧪 0\n"
-        f"⚡ 0   🌑 0  🛰️ 0\n"
+        f"⚡ 0   🌑 0  🪙 0\n"
         f"\n"
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
         f"\n"
@@ -464,6 +467,7 @@ async def menu_bienvenida(context, user_id: int, username: str = None):
             InlineKeyboardButton("📖 GUÍA", callback_data="guia_desbloqueo"),
             InlineKeyboardButton("🏆 PUNTUACIÓN", callback_data="menu_puntuacion")
         ],
+        [InlineKeyboardButton("💰 MERCADO NEGRO", callback_data="mercado_principal")],  # 👈 NUEVO BOTÓN
     ]
     
     if es_admin:

@@ -1,1 +1,12 @@
-{}
+{
+  "TND": {
+    "id": "TND",
+    "nombre": "The New Dawnn",
+    "etiqueta": "TND",
+    "fundador": 7470037078,
+    "fundador_username": "@Admin",
+    "fecha_creacion": "2026-02-15 21:21:39",
+    "descripcion": "",
+    "banco_nivel": 1
+  }
+}

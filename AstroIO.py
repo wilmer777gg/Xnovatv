@@ -8,7 +8,7 @@
 #██║  ██║███████║   ██║   ██║  ██║██║  ██║███████╗███████║
 #╚═╝  ╚═╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚══════╝
 
-#🚀 ASTRO.IO v2.4.0 🚀
+#🚀 ASTRO.IO v2.4.5 🚀
 # Versión v2.3.7 - AstroIO.py
 # Desarrollado por @Neith07 y @Holows
 
@@ -26,6 +26,7 @@
 ✅ PUNTUACIÓN - Ranking y estadísticas en tiempo real
 ✅ ALIANZAS - Sistema completo con banco y permisos
 ✅ BACKUP - Exportar/Importar todos los datos del bot
+✅ MERCADO - Sistema de mercado con Mercado Negro
 ✅ NAVEGACIÓN SIN SPAM - Mismo mensaje siempre
 ===================================================
 """
@@ -100,7 +101,7 @@ def verificar_configuracion_github():
                 logger.info(f"📦 Repositorio: {GITHUB_OWNER}/{GITHUB_REPO}")
             else:
                 logger.warning("⚠️ GitHub Sync configurado pero faltan variables")
-                logger.warning("📝 Para activar, configura: GITHUB_TOKEN, GITHUB_OWNER, GITHUB_REPO")
+                logger.warning("📌 Para activar, configura: GITHUB_TOKEN, GITHUB_OWNER, GITHUB_REPO")
         else:
             logger.info("📁 GitHub Sync DESACTIVADO - Solo respaldo local")
     except Exception as e:
@@ -147,6 +148,17 @@ except ImportError as e:
     def obtener_conversation_handlers_admin():
         return []
 
+# ========== IMPORTAR MÓDULOS DE MERCADO ==========
+try:
+    from mercado import obtener_conversation_handlers_mercado
+    MERCADO_ACTIVO = True
+    logger.info("✅ Sistema de mercado cargado")
+except ImportError as e:
+    logger.warning(f"⚠️ Sistema de mercado no disponible: {e}")
+    MERCADO_ACTIVO = False
+    def obtener_conversation_handlers_mercado():
+        return []
+
 # ========== HANDLERS ==========
 
 async def start_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -165,7 +177,7 @@ async def start_command_handler(update: Update, context: ContextTypes.DEFAULT_TY
     # ✅ Verificar si está registrado
     if not AuthSystem.esta_registrado(user_id):
         AuthSystem.registrar_usuario(user_id, username)
-        logger.info(f"📝 Usuario registrado: {username_tag}")
+        logger.info(f"📌 Usuario registrado: {username_tag}")
     
     # ✅ Si está autorizado, va al menú principal
     if AuthSystem.esta_autorizado(user_id):
@@ -272,7 +284,8 @@ async def ayuda_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• Usuarios con @username\n"
         f"• Navegación sin spam - Un solo mensaje\n"
         f"• Sistema de colas en edificios, flota y defensa\n"
-        f"• Sistema de backup completo (Exportar/Importar)"
+        f"• Sistema de backup completo (Exportar/Importar)\n"
+        f"• Mercado Negro con ofertas de usuarios y sistema"
     )
     await update.message.reply_text(ayuda_texto, parse_mode="HTML")
 
@@ -308,7 +321,7 @@ async def verificar_conexion(app):
     max_intentos = 5
     for intento in range(max_intentos):
         try:
-            logger.info(f"🔄 Intento de conexión {intento + 1}/{max_intentos}")
+            logger.info(f"📡 Intento de conexión {intento + 1}/{max_intentos}")
             # Probar conexión con get_me
             bot_info = await app.bot.get_me()
             logger.info(f"✅ Conexión exitosa - Bot: @{bot_info.username}")
@@ -344,6 +357,7 @@ def main():
     print("✅ Puntuación - Ranking global")
     print("✅ Alianzas - Sistema completo" if ALIANZA_ACTIVA else "⚠️ Alianzas - No disponible")
     print("✅ Backup - Exportar/Importar datos" if BACKUP_ACTIVO else "⚠️ Backup - No disponible")
+    print("✅ Mercado - Sistema de mercado" if MERCADO_ACTIVO else "⚠️ Mercado - No disponible")
     print("=" * 60)
     
     # Crear aplicación
@@ -383,6 +397,12 @@ def main():
         for handler in obtener_conversation_handlers_backup():
             app.add_handler(handler)
         logger.info(f"✅ {len(obtener_conversation_handlers_backup())} ConversationHandlers de backup registrados")
+    
+    # ========== CONVERSATION HANDLERS (MERCADO) ==========
+    if MERCADO_ACTIVO:
+        for handler in obtener_conversation_handlers_mercado():
+            app.add_handler(handler)
+        logger.info(f"✅ {len(obtener_conversation_handlers_mercado())} ConversationHandlers de mercado registrados")
     
     # ========== CALLBACKS ==========
     app.add_handler(CallbackQueryHandler(callback_handler))

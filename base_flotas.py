@@ -8,7 +8,7 @@
 #██║  ██║███████║   ██║   ██║  ██║██║  ██║███████╗███████║
 #╚═╝  ╚═╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚══════╝
 
-#🚀 ASTRO.IO v2.4.0 🚀
+#🚀 ASTRO.IO v2.4.5 🚀
 #✈️ base_flotas.py - SISTEMA DE FLOTAS Y MISIONES ESPACIALES
 #============================================================
 #✅ MISMO ESTILO que menú principal
@@ -73,7 +73,7 @@ except ImportError:
         },
         "crucero": {
             "nombre": "Crucero",
-            "icono": "⚡",
+            "icono": "⚓",
             "ataque": 250,
             "escudo": 50,
             "velocidad": 90,

@@ -8,7 +8,7 @@
 #██║  ██║███████║   ██║   ██║  ██║██║  ██║███████╗███████║
 #╚═╝  ╚═╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚══════╝
 
-#🚀 ASTRO.IO v2.4.0 🚀
+#🚀 ASTRO.IO v2.4.5 🚀
 #🛡️ defensa.py - SISTEMA DE CONSTRUCCIÓN DE DEFENSAS CON COLAS EN TIEMPO REAL
 #===========================================================
 #✅ MISMO ESTILO que menú principal

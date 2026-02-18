@@ -3,17 +3,19 @@
 
 #██████╗ ███████╗████████╗██████╗  █████╗ ██╗     ███████╗
 #██╔══██╗██╔════╝╚══██╔══╝██╔══██╗██╔══██╗██║     ██╔════╝
-#██████╔╝███████╗   ██║   ██████╔╝███████║██║     ███████╗
+#██████╔╝███████╗   ██║   ██╔══██╗███████║██║     ███████╗
 #██╔══██╗╚════██║   ██║   ██╔══██╗██╔══██║██║     ╚════██║
 #██║  ██║███████║   ██║   ██║  ██║██║  ██║███████╗███████║
 #╚═╝  ╚═╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚══════╝
 
-#🚀 ASTRO.IO v2.4.0 🚀
+#🚀 ASTRO.IO v2.4.5 🚀
 #🌍 alianza.py - SISTEMA COMPLETO DE ALIANZAS
 #================================================
-#✅ MISMO ESTILO que menú principal
-#✅ Diseño con separadores 🌀
-#✅ Formato consistente en todos los mensajes
+#✅ Donaciones con 0 para omitir recursos
+#✅ Niveles de banco (1-25) con capacidad = 10k * nivel
+#✅ Mejora lineal: costo = 10 * nivel_actual (en NXT-20)
+#✅ Chat interno con máximo 20 mensajes (FIFO)
+#✅ Gestión de solicitudes, expulsión, descripción y disolución
 #================================================
 
 import os
@@ -40,107 +42,130 @@ ALIANZA_DATOS_FILE = os.path.join(DATA_DIR, "alianza_datos.json")
 ALIANZA_MIEMBROS_FILE = os.path.join(DATA_DIR, "alianza_miembros.json")
 ALIANZA_BANCO_FILE = os.path.join(DATA_DIR, "alianza_banco.json")
 ALIANZA_PERMISOS_FILE = os.path.join(DATA_DIR, "alianza_permisos.json")
+ALIANZA_MENSAJES_FILE = os.path.join(DATA_DIR, "alianza_mensajes.json")
+ALIANZA_SOLICITUDES_FILE = os.path.join(DATA_DIR, "alianza_solicitudes.json")
 
 # Estados para ConversationHandler
 NOMBRE_ALIANZA, ETIQUETA_ALIANZA = range(2)
 BUSCAR_NOMBRE, BUSCAR_ETIQUETA = range(2, 4)
 DONACION_METAL, DONACION_CRISTAL, DONACION_DEUTERIO = range(4, 7)
 RETIRO_METAL, RETIRO_CRISTAL, RETIRO_DEUTERIO = range(7, 10)
+MEJORAR_BANCO_CONFIRMAR = 10
+MENSAJE_TEXTO = 11
+EDITAR_DESCRIPCION = 12
+DISOLVER_CONFIRMAR = 13
+
+# Configuración del banco
+BANCO_NIVEL_MAX = 25
+BANCO_CAPACIDAD_BASE = 10000          # 10k por nivel
+COSTO_MEJORA_BASE = 10                 # costo = base * nivel_actual
+
+def calcular_capacidad_banco(nivel: int) -> int:
+    return BANCO_CAPACIDAD_BASE * nivel
+
+def calcular_costo_mejora_banco(nivel_actual: int) -> int:
+    return COSTO_MEJORA_BASE * nivel_actual   # 10, 20, 30, ...
 
 # ================= FUNCIONES DE INICIALIZACIÓN =================
 
 def inicializar_archivos_alianza():
-    """📁 Crea los archivos JSON de alianza si no existen"""
     os.makedirs(DATA_DIR, exist_ok=True)
-    
-    if not os.path.exists(ALIANZA_DATOS_FILE):
-        save_json(ALIANZA_DATOS_FILE, {})
-    
-    if not os.path.exists(ALIANZA_MIEMBROS_FILE):
-        save_json(ALIANZA_MIEMBROS_FILE, {})
-    
-    if not os.path.exists(ALIANZA_BANCO_FILE):
-        save_json(ALIANZA_BANCO_FILE, {})
-    
-    if not os.path.exists(ALIANZA_PERMISOS_FILE):
-        save_json(ALIANZA_PERMISOS_FILE, {})
+    archivos = [
+        ALIANZA_DATOS_FILE,
+        ALIANZA_MIEMBROS_FILE,
+        ALIANZA_BANCO_FILE,
+        ALIANZA_PERMISOS_FILE,
+        ALIANZA_MENSAJES_FILE,
+        ALIANZA_SOLICITUDES_FILE
+    ]
+    for archivo in archivos:
+        if not os.path.exists(archivo):
+            save_json(archivo, {})
 
-# Inicializar al importar
 inicializar_archivos_alianza()
 
 # ================= FUNCIONES AUXILIARES =================
 
 def generar_id_alianza(etiqueta: str) -> str:
-    """🔑 Genera ID único para la alianza basado en etiqueta"""
     return etiqueta.upper().replace(" ", "")[:10]
 
 def obtener_alianza_usuario(user_id: int) -> tuple:
-    """
-    🔍 Obtiene la alianza de un usuario
-    Retorna: (alianza_id, datos_alianza) o (None, None) si no pertenece
-    """
     user_id_str = str(user_id)
     miembros_data = load_json(ALIANZA_MIEMBROS_FILE) or {}
-    
     for alianza_id, miembros in miembros_data.items():
         if user_id_str in miembros:
             datos = load_json(ALIANZA_DATOS_FILE) or {}
             return alianza_id, datos.get(alianza_id, {})
-    
     return None, None
 
 def es_fundador_alianza(user_id: int, alianza_id: str) -> bool:
-    """👑 Verifica si el usuario es fundador de la alianza"""
     datos = load_json(ALIANZA_DATOS_FILE) or {}
     alianza = datos.get(alianza_id, {})
     return alianza.get("fundador") == user_id
 
 def es_admin_alianza(user_id: int, alianza_id: str) -> bool:
-    """🔐 Verifica si el usuario es fundador o tiene permisos de admin"""
     if es_fundador_alianza(user_id, alianza_id):
         return True
-    
     miembros = load_json(ALIANZA_MIEMBROS_FILE) or {}
     alianza_miembros = miembros.get(alianza_id, {})
     miembro = alianza_miembros.get(str(user_id), {})
     return miembro.get("rango") == "admin"
 
 def puede_retirar(user_id: int, alianza_id: str) -> bool:
-    """💸 Verifica si el usuario puede retirar recursos"""
     permisos = load_json(ALIANZA_PERMISOS_FILE) or {}
     alianza_permisos = permisos.get(alianza_id, {})
     return user_id in alianza_permisos.get("retiro", [])
+
+def obtener_banco(alianza_id: str) -> dict:
+    banco_data = load_json(ALIANZA_BANCO_FILE) or {}
+    banco = banco_data.get(alianza_id, {"metal": 0, "cristal": 0, "deuterio": 0})
+    datos = load_json(ALIANZA_DATOS_FILE) or {}
+    alianza = datos.get(alianza_id, {})
+    nivel = alianza.get("banco_nivel", 1)
+    return {
+        "metal": banco.get("metal", 0),
+        "cristal": banco.get("cristal", 0),
+        "deuterio": banco.get("deuterio", 0),
+        "nivel": nivel
+    }
+
+def guardar_banco(alianza_id: str, metal: int, cristal: int, deuterio: int):
+    banco_data = load_json(ALIANZA_BANCO_FILE) or {}
+    banco_data[alianza_id] = {"metal": metal, "cristal": cristal, "deuterio": deuterio}
+    save_json(ALIANZA_BANCO_FILE, banco_data)
+
+def verificar_capacidad_banco(alianza_id: str, metal: int, cristal: int, deuterio: int) -> tuple:
+    banco = obtener_banco(alianza_id)
+    nivel = banco["nivel"]
+    capacidad = calcular_capacidad_banco(nivel)
+    if banco["metal"] + metal > capacidad:
+        return False, f"🔩 Metal excede capacidad ({abreviar_numero(capacidad)})"
+    if banco["cristal"] + cristal > capacidad:
+        return False, f"💎 Cristal excede capacidad ({abreviar_numero(capacidad)})"
+    if banco["deuterio"] + deuterio > capacidad:
+        return False, f"🧪 Deuterio excede capacidad ({abreviar_numero(capacidad)})"
+    return True, ""
 
 # ================= MENÚ PRINCIPAL DE ALIANZA =================
 
 @requiere_login
 async def menu_alianza_principal(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🌍 Menú principal de alianza - SIEMPRE edita el mensaje actual"""
     query = update.callback_query
     if not query:
         logger.error("❌ menu_alianza_principal sin callback_query")
         return
-    
     await query.answer()
     user_id = query.from_user.id
-    username_tag = AuthSystem.obtener_username(user_id)
-    
-    # Verificar si ya pertenece a una alianza
     alianza_id, alianza_datos = obtener_alianza_usuario(user_id)
-    
     if alianza_id:
-        # Usuario ya está en una alianza → Menú de alianza
         await menu_alianza_interno(update, context, alianza_id, alianza_datos)
     else:
-        # Usuario no está en alianza → Menú de creación/búsqueda
         await menu_sin_alianza(update, context)
 
 async def menu_sin_alianza(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🌍 Menú para usuarios sin alianza"""
     query = update.callback_query
     user_id = query.from_user.id
     username_tag = AuthSystem.obtener_username(user_id)
-    
     mensaje = (
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
         f"🌍 <b>SISTEMA DE ALIANZAS</b> - {username_tag}\n"
@@ -153,118 +178,82 @@ async def menu_sin_alianza(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
         f"<i>Selecciona una opción:</i>"
     )
-    
     keyboard = [
-        [
-            InlineKeyboardButton("📌 CREAR ALIANZA", callback_data="alianza_crear"),
-            InlineKeyboardButton("🔍 BUSCAR ALIANZA", callback_data="alianza_buscar")
-        ],
+        [InlineKeyboardButton("📌 CREAR ALIANZA", callback_data="alianza_crear"),
+         InlineKeyboardButton("🔍 BUSCAR ALIANZA", callback_data="alianza_buscar")],
         [InlineKeyboardButton("◀️ VOLVER", callback_data="menu_principal")]
     ]
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    try:
-        await query.edit_message_text(
-            text=mensaje,
-            reply_markup=reply_markup,
-            parse_mode="HTML"
-        )
-    except Exception as e:
-        logger.error(f"❌ Error en menu_sin_alianza: {e}")
+    await query.edit_message_text(text=mensaje, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
-async def menu_alianza_interno(update: Update, context: ContextTypes.DEFAULT_TYPE, 
-                               alianza_id: str, alianza_datos: dict):
-    """🌍 Menú interno de alianza (para miembros)"""
+async def menu_alianza_interno(update: Update, context: ContextTypes.DEFAULT_TYPE, alianza_id: str, alianza_datos: dict):
     query = update.callback_query
     user_id = query.from_user.id
     username_tag = AuthSystem.obtener_username(user_id)
-    
-    # Obtener datos actualizados
-    banco = load_json(ALIANZA_BANCO_FILE) or {}
-    alianza_banco = banco.get(alianza_id, {"metal": 0, "cristal": 0, "deuterio": 0})
-    
+    banco_info = obtener_banco(alianza_id)
+    metal = banco_info["metal"]
+    cristal = banco_info["cristal"]
+    deuterio = banco_info["deuterio"]
+    nivel_banco = banco_info["nivel"]
+    capacidad = calcular_capacidad_banco(nivel_banco)
     miembros = load_json(ALIANZA_MIEMBROS_FILE) or {}
     alianza_miembros = miembros.get(alianza_id, {})
     total_miembros = len(alianza_miembros)
-    
-    # Verificar rangos
     es_fundador = es_fundador_alianza(user_id, alianza_id)
     es_admin = es_admin_alianza(user_id, alianza_id)
-    puede_ret = puede_retirar(user_id, alianza_id)
-    
+    descripcion = alianza_datos.get("descripcion", "Sin descripción.")
     mensaje = (
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
         f"🌍 <b>{alianza_datos.get('nombre', 'ALIANZA')}</b> [{alianza_datos.get('etiqueta', '???')}]\n"
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
+        f"📝 {descripcion}\n\n"
         f"👑 Fundador: {alianza_datos.get('fundador_username', '@Desconocido')}\n"
         f"👥 Miembros: {total_miembros}\n"
         f"📅 Fundación: {alianza_datos.get('fecha_creacion', 'Desconocida')[:10]}\n\n"
-        f"💰 <b>BANCO DE LA ALIANZA</b>\n"
-        f"🔩 Metal: {abreviar_numero(alianza_banco.get('metal', 0))}\n"
-        f"💎 Cristal: {abreviar_numero(alianza_banco.get('cristal', 0))}\n"
-        f"🧪 Deuterio: {abreviar_numero(alianza_banco.get('deuterio', 0))}\n\n"
+        f"💰 <b>BANCO DE LA ALIANZA</b> (Nivel {nivel_banco}/{BANCO_NIVEL_MAX})\n"
+        f"📦 Capacidad: {abreviar_numero(capacidad)} por recurso\n"
+        f"🔩 Metal: {abreviar_numero(metal)}/{abreviar_numero(capacidad)}\n"
+        f"💎 Cristal: {abreviar_numero(cristal)}/{abreviar_numero(capacidad)}\n"
+        f"🧪 Deuterio: {abreviar_numero(deuterio)}/{abreviar_numero(capacidad)}\n\n"
         f"📋 <b>TU RANGO:</b> "
     )
-    
     if es_fundador:
         mensaje += "👑 Fundador\n"
     elif es_admin:
         mensaje += "🔰 Administrador\n"
     else:
         mensaje += "👤 Miembro\n"
-    
     mensaje += f"\n🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
     mensaje += f"<i>Selecciona una opción:</i>"
-    
-    # Construir teclado
+
     keyboard = [
-        [
-            InlineKeyboardButton("💰 DONAR", callback_data=f"alianza_donar_{alianza_id}"),
-            InlineKeyboardButton("💸 RETIRAR", callback_data=f"alianza_retirar_{alianza_id}")
-        ],
-        [
-            InlineKeyboardButton("📋 MIEMBROS", callback_data=f"alianza_miembros_{alianza_id}"),
-            InlineKeyboardButton("📊 ESTADÍSTICAS", callback_data=f"alianza_stats_{alianza_id}")
-        ]
+        [InlineKeyboardButton("💰 DONAR", callback_data=f"alianza_donar_{alianza_id}"),
+         InlineKeyboardButton("💸 RETIRAR", callback_data=f"alianza_retirar_{alianza_id}")],
+        [InlineKeyboardButton("📋 MIEMBROS", callback_data=f"alianza_miembros_{alianza_id}"),
+         InlineKeyboardButton("💬 CHAT", callback_data=f"alianza_chat_{alianza_id}")],
+        [InlineKeyboardButton("📊 ESTADÍSTICAS", callback_data=f"alianza_stats_{alianza_id}")]
     ]
-    
-    # Botones de administración (solo fundador/admins)
     if es_fundador or es_admin:
-        keyboard.append([
+        admin_row = [
             InlineKeyboardButton("🔑 PERMISOS", callback_data=f"alianza_permisos_{alianza_id}"),
             InlineKeyboardButton("⚙️ ADMIN", callback_data=f"alianza_admin_{alianza_id}")
-        ])
-    
-    # Botón de salir (solo para miembros no fundadores)
+        ]
+        if nivel_banco < BANCO_NIVEL_MAX:
+            admin_row.append(InlineKeyboardButton("🏦 MEJORAR BANCO", callback_data=f"alianza_mejorar_banco_{alianza_id}"))
+        keyboard.append(admin_row)
     if not es_fundador:
         keyboard.append([InlineKeyboardButton("🚪 SALIR DE ALIANZA", callback_data=f"alianza_salir_{alianza_id}")])
-    
     keyboard.append([InlineKeyboardButton("◀️ VOLVER", callback_data="menu_principal")])
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    try:
-        await query.edit_message_text(
-            text=mensaje,
-            reply_markup=reply_markup,
-            parse_mode="HTML"
-        )
-    except Exception as e:
-        logger.error(f"❌ Error en menu_alianza_interno: {e}")
+
+    await query.edit_message_text(text=mensaje, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
 # ================= CREACIÓN DE ALIANZA =================
 
 @requiere_login
 async def iniciar_creacion_alianza(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """📌 Inicia el proceso de creación de alianza"""
     query = update.callback_query
     await query.answer()
-    
     user_id = query.from_user.id
     username_tag = AuthSystem.obtener_username(user_id)
-    
-    # Verificar que no esté ya en una alianza
     alianza_id, _ = obtener_alianza_usuario(user_id)
     if alianza_id:
         await query.edit_message_text(
@@ -279,7 +268,6 @@ async def iniciar_creacion_alianza(update: Update, context: ContextTypes.DEFAULT
             ]])
         )
         return ConversationHandler.END
-    
     mensaje = (
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
         f"📌 <b>CREAR NUEVA ALIANZA</b> - {username_tag}\n"
@@ -292,7 +280,6 @@ async def iniciar_creacion_alianza(update: Update, context: ContextTypes.DEFAULT
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
         f"<i>Escribe el nombre o envía /cancelar para abortar:</i>"
     )
-    
     await query.edit_message_text(
         text=mensaje,
         parse_mode="HTML",
@@ -300,16 +287,12 @@ async def iniciar_creacion_alianza(update: Update, context: ContextTypes.DEFAULT
             InlineKeyboardButton("❌ CANCELAR", callback_data="menu_alianza")
         ]])
     )
-    
     return NOMBRE_ALIANZA
 
 async def recibir_nombre_alianza(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """📝 Recibe el nombre de la alianza"""
     user_id = update.effective_user.id
     username_tag = AuthSystem.obtener_username(user_id)
     nombre = update.message.text.strip()
-    
-    # Validar longitud
     if len(nombre) < 3 or len(nombre) > 30:
         await update.message.reply_text(
             f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
@@ -320,31 +303,23 @@ async def recibir_nombre_alianza(update: Update, context: ContextTypes.DEFAULT_T
             parse_mode="HTML"
         )
         return NOMBRE_ALIANZA
-    
-    # Verificar si el nombre ya existe
     datos = load_json(ALIANZA_DATOS_FILE) or {}
     nombre_existe = False
-    
     for alianza in datos.values():
         if alianza.get("nombre", "").lower() == nombre.lower():
             nombre_existe = True
             break
-    
     if nombre_existe:
         await update.message.reply_text(
             f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
             f"❌ <b>NOMBRE NO DISPONIBLE</b>\n"
             f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
-            f"El nombre '{nombre}' ya está siendo usado por otra alianza.\n\n"
+            f"El nombre '{nombre}' ya está siendo usado.\n\n"
             f"<i>Escribe otro nombre o envía /cancelar:</i>",
             parse_mode="HTML"
         )
         return NOMBRE_ALIANZA
-    
-    # Guardar nombre en contexto
     context.user_data['alianza_nombre'] = nombre
-    
-    # Pedir etiqueta
     await update.message.reply_text(
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
         f"📌 <b>CREAR NUEVA ALIANZA</b> - {username_tag}\n"
@@ -359,16 +334,12 @@ async def recibir_nombre_alianza(update: Update, context: ContextTypes.DEFAULT_T
         f"<i>Escribe la etiqueta o envía /cancelar:</i>",
         parse_mode="HTML"
     )
-    
     return ETIQUETA_ALIANZA
 
 async def recibir_etiqueta_alianza(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """📝 Recibe la etiqueta de la alianza y la crea"""
     user_id = update.effective_user.id
     username_tag = AuthSystem.obtener_username(user_id)
     etiqueta = update.message.text.strip().upper()
-    
-    # Validar longitud
     if len(etiqueta) < 2 or len(etiqueta) > 5:
         await update.message.reply_text(
             f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
@@ -379,8 +350,6 @@ async def recibir_etiqueta_alianza(update: Update, context: ContextTypes.DEFAULT
             parse_mode="HTML"
         )
         return ETIQUETA_ALIANZA
-    
-    # Validar solo letras
     if not etiqueta.isalpha():
         await update.message.reply_text(
             f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
@@ -391,31 +360,20 @@ async def recibir_etiqueta_alianza(update: Update, context: ContextTypes.DEFAULT
             parse_mode="HTML"
         )
         return ETIQUETA_ALIANZA
-    
-    # Verificar si la etiqueta ya existe
     datos = load_json(ALIANZA_DATOS_FILE) or {}
-    etiqueta_existe = etiqueta in datos
-    
-    if etiqueta_existe:
+    if etiqueta in datos:
         await update.message.reply_text(
             f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
             f"❌ <b>ETIQUETA NO DISPONIBLE</b>\n"
             f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
-            f"La etiqueta '{etiqueta}' ya está siendo usada por otra alianza.\n\n"
+            f"La etiqueta '{etiqueta}' ya está en uso.\n\n"
             f"<i>Escribe otra etiqueta o envía /cancelar:</i>",
             parse_mode="HTML"
         )
         return ETIQUETA_ALIANZA
-    
-    # Obtener nombre del contexto
     nombre = context.user_data.get('alianza_nombre', 'Alianza sin nombre')
-    
-    # ========== CREAR ALIANZA ==========
     alianza_id = etiqueta
     ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    # 1. Guardar en alianza_datos.json
-    datos = load_json(ALIANZA_DATOS_FILE) or {}
     datos[alianza_id] = {
         "id": alianza_id,
         "nombre": nombre,
@@ -423,15 +381,13 @@ async def recibir_etiqueta_alianza(update: Update, context: ContextTypes.DEFAULT
         "fundador": user_id,
         "fundador_username": username_tag,
         "fecha_creacion": ahora,
-        "descripcion": ""
+        "descripcion": "",
+        "banco_nivel": 1
     }
     save_json(ALIANZA_DATOS_FILE, datos)
-    
-    # 2. Guardar en alianza_miembros.json
     miembros = load_json(ALIANZA_MIEMBROS_FILE) or {}
     if alianza_id not in miembros:
         miembros[alianza_id] = {}
-    
     miembros[alianza_id][str(user_id)] = {
         "user_id": user_id,
         "username": username_tag,
@@ -439,27 +395,13 @@ async def recibir_etiqueta_alianza(update: Update, context: ContextTypes.DEFAULT
         "fecha_ingreso": ahora
     }
     save_json(ALIANZA_MIEMBROS_FILE, miembros)
-    
-    # 3. Inicializar banco
     banco = load_json(ALIANZA_BANCO_FILE) or {}
-    banco[alianza_id] = {
-        "metal": 0,
-        "cristal": 0,
-        "deuterio": 0
-    }
+    banco[alianza_id] = {"metal": 0, "cristal": 0, "deuterio": 0}
     save_json(ALIANZA_BANCO_FILE, banco)
-    
-    # 4. Inicializar permisos
     permisos = load_json(ALIANZA_PERMISOS_FILE) or {}
-    permisos[alianza_id] = {
-        "retiro": [user_id]  # Fundador puede retirar
-    }
+    permisos[alianza_id] = {"retiro": [user_id]}
     save_json(ALIANZA_PERMISOS_FILE, permisos)
-    
-    # Limpiar contexto
     del context.user_data['alianza_nombre']
-    
-    # Mensaje de éxito
     mensaje = (
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
         f"✅ <b>¡ALIANZA CREADA CON ÉXITO!</b>\n"
@@ -470,34 +412,21 @@ async def recibir_etiqueta_alianza(update: Update, context: ContextTypes.DEFAULT
         f"Ya puedes invitar miembros y gestionar tu alianza.\n\n"
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀"
     )
-    
     keyboard = [
         [InlineKeyboardButton("🌍 IR A MI ALIANZA", callback_data="menu_alianza")],
         [InlineKeyboardButton("🏠 MENÚ PRINCIPAL", callback_data="menu_principal")]
     ]
-    
-    await update.message.reply_text(
-        text=mensaje,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
-    )
-    
+    await update.message.reply_text(text=mensaje, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
     logger.info(f"✅ Alianza creada: {nombre} [{etiqueta}] por {username_tag}")
-    
     return ConversationHandler.END
 
 # ================= BÚSQUEDA DE ALIANZA =================
-
 @requiere_login
 async def iniciar_busqueda_alianza(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🔍 Inicia el proceso de búsqueda de alianza"""
     query = update.callback_query
     await query.answer()
-    
     user_id = query.from_user.id
     username_tag = AuthSystem.obtener_username(user_id)
-    
-    # Verificar que no esté ya en una alianza
     alianza_id, _ = obtener_alianza_usuario(user_id)
     if alianza_id:
         await query.edit_message_text(
@@ -512,7 +441,6 @@ async def iniciar_busqueda_alianza(update: Update, context: ContextTypes.DEFAULT
             ]])
         )
         return ConversationHandler.END
-    
     mensaje = (
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
         f"🔍 <b>BUSCAR ALIANZA</b> - {username_tag}\n"
@@ -522,55 +450,39 @@ async def iniciar_busqueda_alianza(update: Update, context: ContextTypes.DEFAULT
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
         f"<i>Escribe el nombre/etiqueta o envía /cancelar:</i>"
     )
-    
-    await query.edit_message_text(
-        text=mensaje,
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("❌ CANCELAR", callback_data="menu_alianza")
-        ]])
-    )
-    
+    await query.edit_message_text(text=mensaje, parse_mode="HTML", reply_markup=InlineKeyboardMarkup([[
+        InlineKeyboardButton("❌ CANCELAR", callback_data="menu_alianza")
+    ]]))
     return BUSCAR_NOMBRE
 
 async def recibir_busqueda_alianza(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """📝 Recibe el nombre/etiqueta y busca la alianza"""
     user_id = update.effective_user.id
     username_tag = AuthSystem.obtener_username(user_id)
     busqueda = update.message.text.strip()
-    
-    # Buscar alianza por nombre o etiqueta
     datos = load_json(ALIANZA_DATOS_FILE) or {}
     alianza_encontrada = None
     alianza_id = None
-    
-    # Buscar por etiqueta (ID)
     if busqueda.upper() in datos:
         alianza_id = busqueda.upper()
         alianza_encontrada = datos[alianza_id]
     else:
-        # Buscar por nombre
         for aid, alianza in datos.items():
             if alianza.get("nombre", "").lower() == busqueda.lower():
                 alianza_id = aid
                 alianza_encontrada = alianza
                 break
-    
     if not alianza_encontrada:
         await update.message.reply_text(
             f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
             f"❌ <b>ALIANZA NO ENCONTRADA</b>\n"
             f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
-            f"No se encontró ninguna alianza con el nombre o etiqueta '{busqueda}'.\n\n"
+            f"No se encontró ninguna alianza con '{busqueda}'.\n\n"
             f"<i>Escribe otro nombre/etiqueta o envía /cancelar:</i>",
             parse_mode="HTML"
         )
         return BUSCAR_NOMBRE
-    
-    # Mostrar información de la alianza y enviar solicitud
     miembros = load_json(ALIANZA_MIEMBROS_FILE) or {}
     total_miembros = len(miembros.get(alianza_id, {}))
-    
     mensaje = (
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
         f"🔍 <b>ALIANZA ENCONTRADA</b>\n"
@@ -582,35 +494,22 @@ async def recibir_busqueda_alianza(update: Update, context: ContextTypes.DEFAULT
         f"¿Deseas enviar una solicitud para unirte?\n\n"
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀"
     )
-    
     keyboard = [
-        [
-            InlineKeyboardButton("✅ ENVIAR SOLICITUD", callback_data=f"alianza_solicitar_{alianza_id}"),
-            InlineKeyboardButton("❌ CANCELAR", callback_data="menu_alianza")
-        ]
+        [InlineKeyboardButton("✅ ENVIAR SOLICITUD", callback_data=f"alianza_solicitar_{alianza_id}"),
+         InlineKeyboardButton("❌ CANCELAR", callback_data="menu_alianza")]
     ]
-    
-    await update.message.reply_text(
-        text=mensaje,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
-    )
-    
+    await update.message.reply_text(text=mensaje, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
     return ConversationHandler.END
 
-# ================= SOLICITUDES DE ALIANZA =================
+# ================= SOLICITUDES DE ALIANZA (ahora guardadas en archivo) =================
 
 @requiere_login
 async def enviar_solicitud_alianza(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """📨 Envía una solicitud para unirse a una alianza"""
     query = update.callback_query
     await query.answer()
-    
     user_id = query.from_user.id
     username_tag = AuthSystem.obtener_username(user_id)
     alianza_id = query.data.replace("alianza_solicitar_", "")
-    
-    # Verificar que no esté ya en una alianza
     alianza_actual, _ = obtener_alianza_usuario(user_id)
     if alianza_actual:
         await query.edit_message_text(
@@ -625,11 +524,8 @@ async def enviar_solicitud_alianza(update: Update, context: ContextTypes.DEFAULT
             ]])
         )
         return
-    
-    # Obtener datos de la alianza
     datos = load_json(ALIANZA_DATOS_FILE) or {}
     alianza = datos.get(alianza_id, {})
-    
     if not alianza:
         await query.edit_message_text(
             f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
@@ -643,235 +539,103 @@ async def enviar_solicitud_alianza(update: Update, context: ContextTypes.DEFAULT
             ]])
         )
         return
-    
-    # Notificar al fundador
-    fundador_id = alianza.get("fundador")
-    
-    mensaje_admin = (
+
+    # Guardar solicitud en archivo
+    solicitudes_data = load_json(ALIANZA_SOLICITUDES_FILE) or {}
+    if alianza_id not in solicitudes_data:
+        solicitudes_data[alianza_id] = []
+    # Evitar duplicados
+    for s in solicitudes_data[alianza_id]:
+        if s["user_id"] == user_id:
+            await query.edit_message_text(
+                f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
+                f"❌ <b>YA ENVIASTE SOLICITUD</b>\n"
+                f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
+                f"Ya tienes una solicitud pendiente para esta alianza.",
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("◀️ VOLVER", callback_data="menu_alianza")
+                ]])
+            )
+            return
+    solicitudes_data[alianza_id].append({
+        "user_id": user_id,
+        "username": username_tag,
+        "fecha": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    })
+    save_json(ALIANZA_SOLICITUDES_FILE, solicitudes_data)
+
+    # Notificar a los administradores (opcional, pero se puede hacer)
+    miembros = load_json(ALIANZA_MIEMBROS_FILE) or {}
+    miembros_alianza = miembros.get(alianza_id, {})
+    for uid_str in miembros_alianza.keys():
+        if es_admin_alianza(int(uid_str), alianza_id):
+            try:
+                await context.bot.send_message(
+                    chat_id=int(uid_str),
+                    text=f"📨 Nueva solicitud de {username_tag} para unirse a la alianza.",
+                    parse_mode="HTML"
+                )
+            except:
+                pass
+
+    await query.edit_message_text(
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
-        f"📨 <b>SOLICITUD DE INGRESO</b>\n"
+        f"✅ <b>SOLICITUD ENVIADA</b>\n"
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
-        f"👤 Usuario: {username_tag}\n"
-        f"🆔 ID: <code>{user_id}</code>\n"
-        f"🌍 Alianza: {alianza.get('nombre')} [{alianza_id}]\n"
-        f"📅 Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
-        f"¿Aceptas esta solicitud?\n\n"
-        f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀"
+        f"Tu solicitud ha sido enviada a los administradores de {alianza.get('nombre')}.\n"
+        f"Recibirás una notificación cuando sea respondida.\n\n"
+        f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("◀️ VOLVER", callback_data="menu_alianza")
+        ]])
     )
-    
-    keyboard = [
-        [
-            InlineKeyboardButton("✅ ACEPTAR", callback_data=f"alianza_aceptar_{user_id}_{alianza_id}"),
-            InlineKeyboardButton("❌ RECHAZAR", callback_data=f"alianza_rechazar_{user_id}_{alianza_id}")
-        ]
-    ]
-    
-    try:
-        await context.bot.send_message(
-            chat_id=fundador_id,
-            text=mensaje_admin,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="HTML"
-        )
-        
-        await query.edit_message_text(
-            f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
-            f"✅ <b>SOLICITUD ENVIADA</b>\n"
-            f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
-            f"Tu solicitud ha sido enviada al fundador de {alianza.get('nombre')}.\n"
-            f"Recibirás una notificación cuando sea respondida.\n\n"
-            f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀",
-            parse_mode="HTML",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("◀️ VOLVER", callback_data="menu_alianza")
-            ]])
-        )
-        
-        logger.info(f"📨 Solicitud de {username_tag} para unirse a {alianza_id}")
-        
-    except Exception as e:
-        logger.error(f"❌ Error notificando al fundador: {e}")
-        await query.edit_message_text(
-            f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
-            f"❌ <b>ERROR AL ENVIAR SOLICITUD</b>\n"
-            f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
-            f"No se pudo contactar al fundador de la alianza.\n\n"
-            f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀",
-            parse_mode="HTML",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("◀️ VOLVER", callback_data="menu_alianza")
-            ]])
-        )
+    logger.info(f"📨 Solicitud de {username_tag} para unirse a {alianza_id}")
 
-@requiere_login
-async def decision_solicitud_alianza(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """👑 Manejador para aceptar/rechazar solicitudes de alianza"""
-    query = update.callback_query
-    await query.answer()
-    
-    try:
-        partes = query.data.split("_")
-        accion = partes[1]
-        solicitante_id = int(partes[2])
-        alianza_id = partes[3]
-    except Exception as e:
-        logger.error(f"❌ Error parseando callback: {query.data} - {e}")
-        await query.edit_message_text(
-            f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
-            f"❌ <b>ERROR</b>\n"
-            f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
-            f"Datos inválidos.\n\n"
-            f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀",
-            parse_mode="HTML"
-        )
-        return
-    
-    admin_id = query.from_user.id
-    admin_username = AuthSystem.obtener_username(admin_id)
-    solicitante_username = AuthSystem.obtener_username(solicitante_id)
-    
-    # Verificar que el admin sea fundador o admin de la alianza
-    if not es_admin_alianza(admin_id, alianza_id):
-        await query.answer("❌ No tienes permisos para gestionar solicitudes", show_alert=True)
-        return
-    
-    if accion == "aceptar":
-        # ========== ACEPTAR SOLICITUD ==========
-        ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        # 1. Agregar a miembros
-        miembros = load_json(ALIANZA_MIEMBROS_FILE) or {}
-        if alianza_id not in miembros:
-            miembros[alianza_id] = {}
-        
-        miembros[alianza_id][str(solicitante_id)] = {
-            "user_id": solicitante_id,
-            "username": solicitante_username,
-            "rango": "miembro",
-            "fecha_ingreso": ahora
-        }
-        save_json(ALIANZA_MIEMBROS_FILE, miembros)
-        
-        # 2. Notificar al solicitante
-        try:
-            datos = load_json(ALIANZA_DATOS_FILE) or {}
-            alianza = datos.get(alianza_id, {})
-            nombre_alianza = alianza.get("nombre", alianza_id)
-            
-            await context.bot.send_message(
-                chat_id=solicitante_id,
-                text=f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
-                     f"✅ <b>¡SOLICITUD ACEPTADA!</b>\n"
-                     f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
-                     f"Has sido aceptado en <b>{nombre_alianza}</b> [{alianza_id}].\n\n"
-                     f"🌍 Usa /start y ve a Alianzas para acceder.\n\n"
-                     f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀",
-                parse_mode="HTML"
-            )
-        except Exception as e:
-            logger.error(f"❌ Error notificando a {solicitante_id}: {e}")
-        
-        # 3. Responder al admin
-        await query.edit_message_text(
-            f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
-            f"✅ <b>SOLICITUD ACEPTADA</b>\n"
-            f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
-            f"👤 Usuario: {solicitante_username}\n"
-            f"🌍 Alianza: {alianza_id}\n"
-            f"👑 Admin: {admin_username}\n"
-            f"📅 Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
-            f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀",
-            parse_mode="HTML"
-        )
-        
-        logger.info(f"✅ {solicitante_username} aceptado en {alianza_id} por {admin_username}")
-        
-    elif accion == "rechazar":
-        # ========== RECHAZAR SOLICITUD ==========
-        try:
-            datos = load_json(ALIANZA_DATOS_FILE) or {}
-            alianza = datos.get(alianza_id, {})
-            nombre_alianza = alianza.get("nombre", alianza_id)
-            
-            await context.bot.send_message(
-                chat_id=solicitante_id,
-                text=f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
-                     f"❌ <b>SOLICITUD RECHAZADA</b>\n"
-                     f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
-                     f"Tu solicitud para unirte a <b>{nombre_alianza}</b> [{alianza_id}] "
-                     f"ha sido rechazada.\n\n"
-                     f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀",
-                parse_mode="HTML"
-            )
-        except Exception as e:
-            logger.error(f"❌ Error notificando a {solicitante_id}: {e}")
-        
-        await query.edit_message_text(
-            f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
-            f"❌ <b>SOLICITUD RECHAZADA</b>\n"
-            f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
-            f"👤 Usuario: {solicitante_username}\n"
-            f"🌍 Alianza: {alianza_id}\n"
-            f"👑 Admin: {admin_username}\n"
-            f"📅 Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
-            f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀",
-            parse_mode="HTML"
-        )
-        
-        logger.info(f"❌ {solicitante_username} rechazado en {alianza_id} por {admin_username}")
+# Funciones para aceptar/rechazar desde el panel de administración (ya definidas más abajo)
 
-# ================= DONACIONES =================
+# ================= DONACIONES MODIFICADAS (aceptar 0) =================
 
 @requiere_login
 async def iniciar_donacion(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """💰 Inicia el proceso de donación"""
     query = update.callback_query
     await query.answer()
-    
     user_id = query.from_user.id
     alianza_id = query.data.replace("alianza_donar_", "")
-    
-    # Verificar que pertenezca a la alianza
     alianza_actual, _ = obtener_alianza_usuario(user_id)
     if alianza_actual != alianza_id:
         await query.answer("❌ No perteneces a esta alianza", show_alert=True)
         return
-    
-    # Obtener recursos del usuario
+    context.user_data['donacion_alianza'] = alianza_id
+    context.user_data['donacion_metal'] = 0
+    context.user_data['donacion_cristal'] = 0
+    context.user_data['donacion_deuterio'] = 0
     recursos_data = load_json(RECURSOS_FILE) or {}
     recursos = recursos_data.get(str(user_id), {"metal": 0, "cristal": 0, "deuterio": 0})
-    
-    # Guardar alianza_id en contexto
-    context.user_data['donacion_alianza'] = alianza_id
-    
     mensaje = (
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
         f"💰 <b>DONAR METAL</b>\n"
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
         f"Tus recursos disponibles: 🔩 {abreviar_numero(recursos.get('metal', 0))}\n\n"
-        f"Escribe la cantidad de metal que deseas donar:\n\n"
+        f"Escribe la cantidad de metal que deseas donar (0 para omitir):\n\n"
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀"
     )
-    
     await query.edit_message_text(
         text=mensaje,
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("❌ CANCELAR", callback_data=f"menu_alianza")
+            InlineKeyboardButton("❌ CANCELAR", callback_data="menu_alianza")
         ]])
     )
-    
     return DONACION_METAL
 
 async def recibir_donacion_metal(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """📝 Recibe cantidad de metal para donar"""
     user_id = update.effective_user.id
     alianza_id = context.user_data.get('donacion_alianza')
-    
     if not alianza_id:
         await update.message.reply_text("❌ Sesión de donación expirada")
         return ConversationHandler.END
-    
     try:
         cantidad = int(update.message.text.strip())
     except ValueError:
@@ -884,63 +648,50 @@ async def recibir_donacion_metal(update: Update, context: ContextTypes.DEFAULT_T
             parse_mode="HTML"
         )
         return DONACION_METAL
-    
-    if cantidad <= 0:
+    if cantidad < 0:
         await update.message.reply_text(
             f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
             f"❌ <b>ERROR</b>\n"
             f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
-            f"La cantidad debe ser mayor a 0.\n\n"
+            f"La cantidad no puede ser negativa.\n\n"
             f"<i>Escribe la cantidad o envía /cancelar:</i>",
             parse_mode="HTML"
         )
         return DONACION_METAL
-    
-    # Verificar recursos
+    if cantidad > 0:
+        recursos_data = load_json(RECURSOS_FILE) or {}
+        recursos = recursos_data.get(str(user_id), {})
+        if recursos.get('metal', 0) < cantidad:
+            await update.message.reply_text(
+                f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
+                f"❌ <b>RECURSOS INSUFICIENTES</b>\n"
+                f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
+                f"No tienes suficiente metal.\n"
+                f"Disponible: 🔩 {abreviar_numero(recursos.get('metal', 0))}\n\n"
+                f"<i>Escribe otra cantidad o envía /cancelar:</i>",
+                parse_mode="HTML"
+            )
+            return DONACION_METAL
+    context.user_data['donacion_metal'] = cantidad
     recursos_data = load_json(RECURSOS_FILE) or {}
     recursos = recursos_data.get(str(user_id), {})
-    
-    if recursos.get('metal', 0) < cantidad:
-        await update.message.reply_text(
-            f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
-            f"❌ <b>RECURSOS INSUFICIENTES</b>\n"
-            f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
-            f"No tienes suficiente metal.\n"
-            f"Disponible: 🔩 {abreviar_numero(recursos.get('metal', 0))}\n\n"
-            f"<i>Escribe otra cantidad o envía /cancelar:</i>",
-            parse_mode="HTML"
-        )
-        return DONACION_METAL
-    
-    # Guardar cantidad
-    context.user_data['donacion_metal'] = cantidad
-    
-    # Pedir cristal
     mensaje = (
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
         f"💰 <b>DONAR CRISTAL</b>\n"
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
         f"Tus recursos disponibles: 💎 {abreviar_numero(recursos.get('cristal', 0))}\n\n"
-        f"Escribe la cantidad de cristal que deseas donar:\n\n"
+        f"Escribe la cantidad de cristal que deseas donar (0 para omitir):\n\n"
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀"
     )
-    
-    await update.message.reply_text(
-        text=mensaje,
-        parse_mode="HTML"
-    )
-    
+    await update.message.reply_text(text=mensaje, parse_mode="HTML")
     return DONACION_CRISTAL
 
 async def recibir_donacion_cristal(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """📝 Recibe cantidad de cristal para donar"""
     user_id = update.effective_user.id
     alianza_id = context.user_data.get('donacion_alianza')
-    
     if not alianza_id:
         await update.message.reply_text("❌ Sesión de donación expirada")
         return ConversationHandler.END
-    
     try:
         cantidad = int(update.message.text.strip())
     except ValueError:
@@ -953,64 +704,51 @@ async def recibir_donacion_cristal(update: Update, context: ContextTypes.DEFAULT
             parse_mode="HTML"
         )
         return DONACION_CRISTAL
-    
-    if cantidad <= 0:
+    if cantidad < 0:
         await update.message.reply_text(
             f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
             f"❌ <b>ERROR</b>\n"
             f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
-            f"La cantidad debe ser mayor a 0.\n\n"
+            f"La cantidad no puede ser negativa.\n\n"
             f"<i>Escribe la cantidad o envía /cancelar:</i>",
             parse_mode="HTML"
         )
         return DONACION_CRISTAL
-    
-    # Verificar recursos
+    if cantidad > 0:
+        recursos_data = load_json(RECURSOS_FILE) or {}
+        recursos = recursos_data.get(str(user_id), {})
+        if recursos.get('cristal', 0) < cantidad:
+            await update.message.reply_text(
+                f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
+                f"❌ <b>RECURSOS INSUFICIENTES</b>\n"
+                f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
+                f"No tienes suficiente cristal.\n"
+                f"Disponible: 💎 {abreviar_numero(recursos.get('cristal', 0))}\n\n"
+                f"<i>Escribe otra cantidad o envía /cancelar:</i>",
+                parse_mode="HTML"
+            )
+            return DONACION_CRISTAL
+    context.user_data['donacion_cristal'] = cantidad
     recursos_data = load_json(RECURSOS_FILE) or {}
     recursos = recursos_data.get(str(user_id), {})
-    
-    if recursos.get('cristal', 0) < cantidad:
-        await update.message.reply_text(
-            f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
-            f"❌ <b>RECURSOS INSUFICIENTES</b>\n"
-            f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
-            f"No tienes suficiente cristal.\n"
-            f"Disponible: 💎 {abreviar_numero(recursos.get('cristal', 0))}\n\n"
-            f"<i>Escribe otra cantidad o envía /cancelar:</i>",
-            parse_mode="HTML"
-        )
-        return DONACION_CRISTAL
-    
-    # Guardar cantidad
-    context.user_data['donacion_cristal'] = cantidad
-    
-    # Pedir deuterio
     mensaje = (
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
         f"💰 <b>DONAR DEUTERIO</b>\n"
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
         f"Tus recursos disponibles: 🧪 {abreviar_numero(recursos.get('deuterio', 0))}\n\n"
-        f"Escribe la cantidad de deuterio que deseas donar:\n\n"
+        f"Escribe la cantidad de deuterio que deseas donar (0 para omitir):\n\n"
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀"
     )
-    
-    await update.message.reply_text(
-        text=mensaje,
-        parse_mode="HTML"
-    )
-    
+    await update.message.reply_text(text=mensaje, parse_mode="HTML")
     return DONACION_DEUTERIO
 
 async def recibir_donacion_deuterio(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """📝 Recibe cantidad de deuterio y confirma donación"""
     user_id = update.effective_user.id
     username_tag = AuthSystem.obtener_username(user_id)
     alianza_id = context.user_data.get('donacion_alianza')
-    
     if not alianza_id:
         await update.message.reply_text("❌ Sesión de donación expirada")
         return ConversationHandler.END
-    
     try:
         cantidad = int(update.message.text.strip())
     except ValueError:
@@ -1023,156 +761,355 @@ async def recibir_donacion_deuterio(update: Update, context: ContextTypes.DEFAUL
             parse_mode="HTML"
         )
         return DONACION_DEUTERIO
-    
-    if cantidad <= 0:
+    if cantidad < 0:
         await update.message.reply_text(
             f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
             f"❌ <b>ERROR</b>\n"
             f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
-            f"La cantidad debe ser mayor a 0.\n\n"
+            f"La cantidad no puede ser negativa.\n\n"
             f"<i>Escribe la cantidad o envía /cancelar:</i>",
             parse_mode="HTML"
         )
         return DONACION_DEUTERIO
-    
-    # Verificar recursos
-    recursos_data = load_json(RECURSOS_FILE) or {}
-    recursos = recursos_data.get(str(user_id), {})
-    
-    if recursos.get('deuterio', 0) < cantidad:
-        await update.message.reply_text(
-            f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
-            f"❌ <b>RECURSOS INSUFICIENTES</b>\n"
-            f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
-            f"No tienes suficiente deuterio.\n"
-            f"Disponible: 🧪 {abreviar_numero(recursos.get('deuterio', 0))}\n\n"
-            f"<i>Escribe otra cantidad o envía /cancelar:</i>",
-            parse_mode="HTML"
-        )
-        return DONACION_DEUTERIO
-    
-    # Obtener cantidades
+    if cantidad > 0:
+        recursos_data = load_json(RECURSOS_FILE) or {}
+        recursos = recursos_data.get(str(user_id), {})
+        if recursos.get('deuterio', 0) < cantidad:
+            await update.message.reply_text(
+                f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
+                f"❌ <b>RECURSOS INSUFICIENTES</b>\n"
+                f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
+                f"No tienes suficiente deuterio.\n"
+                f"Disponible: 🧪 {abreviar_numero(recursos.get('deuterio', 0))}\n\n"
+                f"<i>Escribe otra cantidad o envía /cancelar:</i>",
+                parse_mode="HTML"
+            )
+            return DONACION_DEUTERIO
     metal = context.user_data.get('donacion_metal', 0)
     cristal = context.user_data.get('donacion_cristal', 0)
     deuterio = cantidad
-    
-    # Confirmación
+    if metal == 0 and cristal == 0 and deuterio == 0:
+        await update.message.reply_text(
+            f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
+            f"❌ <b>DONACIÓN CANCELADA</b>\n"
+            f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
+            f"No has donado ningún recurso.\n\n",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🌍 VOLVER A ALIANZA", callback_data="menu_alianza")
+            ]])
+        )
+        for key in ['donacion_alianza', 'donacion_metal', 'donacion_cristal']:
+            context.user_data.pop(key, None)
+        return ConversationHandler.END
+    ok, msg = verificar_capacidad_banco(alianza_id, metal, cristal, deuterio)
+    if not ok:
+        await update.message.reply_text(
+            f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
+            f"❌ <b>CAPACIDAD INSUFICIENTE</b>\n"
+            f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
+            f"{msg}\n\n"
+            f"<i>La donación no puede completarse.</i>",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 VOLVER", callback_data="menu_alianza")
+            ]])
+        )
+        return ConversationHandler.END
     mensaje = (
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
         f"✅ <b>CONFIRMAR DONACIÓN</b>\n"
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
         f"Vas a donar a la alianza:\n\n"
-        f"🔩 Metal: {abreviar_numero(metal)}\n"
-        f"💎 Cristal: {abreviar_numero(cristal)}\n"
-        f"🧪 Deuterio: {abreviar_numero(deuterio)}\n\n"
+        f"🔩 Metal: {abreviar_numero(metal) if metal > 0 else '0 (omitido)'}\n"
+        f"💎 Cristal: {abreviar_numero(cristal) if cristal > 0 else '0 (omitido)'}\n"
+        f"🧪 Deuterio: {abreviar_numero(deuterio) if deuterio > 0 else '0 (omitido)'}\n\n"
         f"¿Confirmas esta donación?\n\n"
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀"
     )
-    
     keyboard = [
-        [
-            InlineKeyboardButton("✅ CONFIRMAR", callback_data=f"alianza_confirmar_donacion_{alianza_id}_{metal}_{cristal}_{deuterio}"),
-            InlineKeyboardButton("❌ CANCELAR", callback_data="menu_alianza")
-        ]
+        [InlineKeyboardButton("✅ CONFIRMAR", callback_data=f"alianza_confirmar_donacion_{alianza_id}_{metal}_{cristal}_{deuterio}"),
+         InlineKeyboardButton("❌ CANCELAR", callback_data="menu_alianza")]
     ]
-    
-    await update.message.reply_text(
-        text=mensaje,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
-    )
-    
+    await update.message.reply_text(text=mensaje, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
     return ConversationHandler.END
 
 @requiere_login
 async def confirmar_donacion(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """✅ Ejecuta la donación confirmada"""
     query = update.callback_query
     await query.answer()
-    
     partes = query.data.split("_")
     alianza_id = partes[3]
     metal = int(partes[4])
     cristal = int(partes[5])
     deuterio = int(partes[6])
-    
     user_id = query.from_user.id
     username_tag = AuthSystem.obtener_username(user_id)
-    
-    # ========== 1. DESCONTAR RECURSOS DEL USUARIO ==========
+    ok, msg = verificar_capacidad_banco(alianza_id, metal, cristal, deuterio)
+    if not ok:
+        await query.edit_message_text(
+            f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
+            f"❌ <b>ERROR</b>\n"
+            f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
+            f"{msg}\n\n"
+            f"La donación no pudo completarse.",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🌍 VOLVER A ALIANZA", callback_data="menu_alianza")
+            ]])
+        )
+        return
     recursos_data = load_json(RECURSOS_FILE) or {}
     recursos = recursos_data.get(str(user_id), {})
-    
-    recursos['metal'] = recursos.get('metal', 0) - metal
-    recursos['cristal'] = recursos.get('cristal', 0) - cristal
-    recursos['deuterio'] = recursos.get('deuterio', 0) - deuterio
-    
+    if metal > 0:
+        recursos['metal'] = recursos.get('metal', 0) - metal
+    if cristal > 0:
+        recursos['cristal'] = recursos.get('cristal', 0) - cristal
+    if deuterio > 0:
+        recursos['deuterio'] = recursos.get('deuterio', 0) - deuterio
     recursos_data[str(user_id)] = recursos
     save_json(RECURSOS_FILE, recursos_data)
-    
-    # ========== 2. SUMAR AL BANCO DE LA ALIANZA ==========
-    banco = load_json(ALIANZA_BANCO_FILE) or {}
-    
-    if alianza_id not in banco:
-        banco[alianza_id] = {"metal": 0, "cristal": 0, "deuterio": 0}
-    
-    banco[alianza_id]['metal'] = banco[alianza_id].get('metal', 0) + metal
-    banco[alianza_id]['cristal'] = banco[alianza_id].get('cristal', 0) + cristal
-    banco[alianza_id]['deuterio'] = banco[alianza_id].get('deuterio', 0) + deuterio
-    
-    save_json(ALIANZA_BANCO_FILE, banco)
-    
-    # ========== 3. MENSAJE DE ÉXITO ==========
+    banco_info = obtener_banco(alianza_id)
+    nuevo_metal = banco_info["metal"] + metal
+    nuevo_cristal = banco_info["cristal"] + cristal
+    nuevo_deuterio = banco_info["deuterio"] + deuterio
+    guardar_banco(alianza_id, nuevo_metal, nuevo_cristal, nuevo_deuterio)
     mensaje = (
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
         f"✅ <b>DONACIÓN COMPLETADA</b>\n"
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
         f"Has donado a la alianza:\n\n"
-        f"🔩 Metal: {abreviar_numero(metal)}\n"
-        f"💎 Cristal: {abreviar_numero(cristal)}\n"
-        f"🧪 Deuterio: {abreviar_numero(deuterio)}\n\n"
-        f"💰 Recursos descontados de tu cuenta.\n"
-        f"🏦 Recursos añadidos al banco de la alianza.\n\n"
-        f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀"
     )
-    
+    if metal > 0:
+        mensaje += f"🔩 Metal: {abreviar_numero(metal)}\n"
+    if cristal > 0:
+        mensaje += f"💎 Cristal: {abreviar_numero(cristal)}\n"
+    if deuterio > 0:
+        mensaje += f"🧪 Deuterio: {abreviar_numero(deuterio)}\n"
+    mensaje += f"\n💰 Recursos descontados de tu cuenta.\n"
+    mensaje += f"🏦 Recursos añadidos al banco de la alianza.\n\n"
+    mensaje += f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀"
     keyboard = [
         [InlineKeyboardButton("🌍 VOLVER A ALIANZA", callback_data="menu_alianza")],
         [InlineKeyboardButton("🏠 MENÚ PRINCIPAL", callback_data="menu_principal")]
     ]
-    
-    await query.edit_message_text(
-        text=mensaje,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
-    )
-    
+    await query.edit_message_text(text=mensaje, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
     logger.info(f"💰 {username_tag} donó {metal}M {cristal}C {deuterio}D a {alianza_id}")
 
-# ================= LISTA DE MIEMBROS =================
+# ================= MEJORA DE BANCO =================
 
 @requiere_login
-async def ver_miembros(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """📋 Muestra la lista de miembros de la alianza"""
+async def iniciar_mejora_banco(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    
+    user_id = query.from_user.id
+    alianza_id = query.data.replace("alianza_mejorar_banco_", "")
+    if not es_admin_alianza(user_id, alianza_id):
+        await query.answer("❌ No tienes permisos", show_alert=True)
+        return
+    banco_info = obtener_banco(alianza_id)
+    nivel_actual = banco_info["nivel"]
+    if nivel_actual >= BANCO_NIVEL_MAX:
+        await query.edit_message_text(
+            f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
+            f"🏆 <b>BANCO AL MÁXIMO NIVEL</b>\n"
+            f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
+            f"El banco ya está en nivel máximo ({BANCO_NIVEL_MAX}).",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("◀️ VOLVER", callback_data="menu_alianza")
+            ]])
+        )
+        return
+    costo = calcular_costo_mejora_banco(nivel_actual)
+    nueva_capacidad = calcular_capacidad_banco(nivel_actual + 1)
+    recursos = load_json(RECURSOS_FILE) or {}
+    user_recursos = recursos.get(str(user_id), {})
+    nxt20_disponible = user_recursos.get("nxt20", 0)
+    if nxt20_disponible < costo:
+        await query.edit_message_text(
+            f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
+            f"❌ <b>NXT20 INSUFICIENTE</b>\n"
+            f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
+            f"Necesitas {abreviar_numero(costo)} NXT-20 para mejorar el banco.\n"
+            f"Tienes: {abreviar_numero(nxt20_disponible)}",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("◀️ VOLVER", callback_data="menu_alianza")
+            ]])
+        )
+        return
+    context.user_data['mejora_banco_alianza'] = alianza_id
+    context.user_data['mejora_banco_costo'] = costo
+    context.user_data['mejora_banco_nuevo_nivel'] = nivel_actual + 1
+    mensaje = (
+        f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
+        f"🏦 <b>MEJORAR BANCO</b>\n"
+        f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
+        f"Banco actual: Nivel {nivel_actual}\n"
+        f"Capacidad actual: {abreviar_numero(calcular_capacidad_banco(nivel_actual))} por recurso\n\n"
+        f"Banco nuevo: Nivel {nivel_actual + 1}\n"
+        f"Capacidad nueva: {abreviar_numero(nueva_capacidad)} por recurso\n\n"
+        f"💰 Costo: {abreviar_numero(costo)} NXT-20\n\n"
+        f"¿Confirmas la mejora?\n\n"
+        f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀"
+    )
+    keyboard = [
+        [InlineKeyboardButton("✅ CONFIRMAR", callback_data="alianza_confirmar_mejora_banco"),
+         InlineKeyboardButton("❌ CANCELAR", callback_data="menu_alianza")]
+    ]
+    await query.edit_message_text(text=mensaje, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    return MEJORAR_BANCO_CONFIRMAR
+
+async def confirmar_mejora_banco(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    alianza_id = context.user_data.get('mejora_banco_alianza')
+    costo = context.user_data.get('mejora_banco_costo')
+    nuevo_nivel = context.user_data.get('mejora_banco_nuevo_nivel')
+    if not alianza_id:
+        await query.edit_message_text("❌ Sesión expirada")
+        return ConversationHandler.END
+    recursos = load_json(RECURSOS_FILE) or {}
+    user_recursos = recursos.get(str(user_id), {})
+    nxt20_actual = user_recursos.get("nxt20", 0)
+    if nxt20_actual < costo:
+        await query.edit_message_text(
+            f"❌ No tienes suficiente NXT-20",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("◀️ VOLVER", callback_data="menu_alianza")
+            ]])
+        )
+        return ConversationHandler.END
+    user_recursos["nxt20"] = nxt20_actual - costo
+    recursos[str(user_id)] = user_recursos
+    save_json(RECURSOS_FILE, recursos)
+    datos = load_json(ALIANZA_DATOS_FILE) or {}
+    if alianza_id not in datos:
+        datos[alianza_id] = {}
+    datos[alianza_id]["banco_nivel"] = nuevo_nivel
+    save_json(ALIANZA_DATOS_FILE, datos)
+    await query.edit_message_text(
+        f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
+        f"✅ <b>BANCO MEJORADO</b>\n"
+        f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
+        f"¡El banco ahora es nivel {nuevo_nivel}!\n"
+        f"Capacidad: {abreviar_numero(calcular_capacidad_banco(nuevo_nivel))} por recurso.\n\n"
+        f"Se han descontado {abreviar_numero(costo)} NXT-20.",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("🌍 VOLVER A ALIANZA", callback_data="menu_alianza")
+        ]])
+    )
+    for key in ['mejora_banco_alianza', 'mejora_banco_costo', 'mejora_banco_nuevo_nivel']:
+        context.user_data.pop(key, None)
+    logger.info(f"🏦 {AuthSystem.obtener_username(user_id)} mejoró banco de {alianza_id} a nivel {nuevo_nivel}")
+    return ConversationHandler.END
+
+# ================= CHAT DE ALIANZA =================
+
+@requiere_login
+async def ver_chat_alianza(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    alianza_id, alianza_datos = obtener_alianza_usuario(user_id)
+    if not alianza_id:
+        await query.answer("❌ No perteneces a ninguna alianza", show_alert=True)
+        return
+    mensajes_data = load_json(ALIANZA_MENSAJES_FILE) or {}
+    mensajes = mensajes_data.get(alianza_id, [])
+    mensajes = sorted(mensajes, key=lambda x: x["fecha"], reverse=True)[:20]  # Últimos 20
+    texto = (
+        f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
+        f"💬 <b>CHAT DE {alianza_datos.get('nombre', 'ALIANZA')}</b>\n"
+        f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
+    )
+    if not mensajes:
+        texto += "📭 No hay mensajes aún.\n\n"
+    else:
+        for msg in mensajes:
+            fecha = msg["fecha"][:16]
+            texto += f"<b>{msg['username']}</b> [{fecha}]:\n{msg['texto']}\n\n"
+    texto += f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀"
+    keyboard = [
+        [InlineKeyboardButton("✏️ ESCRIBIR MENSAJE", callback_data=f"alianza_escribir_chat_{alianza_id}")],
+        [InlineKeyboardButton("🔄 ACTUALIZAR", callback_data=f"alianza_chat_{alianza_id}")],
+        [InlineKeyboardButton("◀️ VOLVER", callback_data="menu_alianza")]
+    ]
+    await query.edit_message_text(text=texto, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+
+@requiere_login
+async def iniciar_escribir_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    alianza_id, alianza_datos = obtener_alianza_usuario(user_id)
+    if not alianza_id:
+        await query.answer("❌ No perteneces a ninguna alianza", show_alert=True)
+        return
+    context.user_data['chat_alianza'] = alianza_id
+    mensaje = (
+        f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
+        f"✏️ <b>ESCRIBIR MENSAJE</b>\n"
+        f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
+        f"Escribe tu mensaje. Será visible para todos los miembros.\n\n"
+        f"<i>Puedes usar formato HTML: &lt;b&gt;negrita&lt;/b&gt;, etc.</i>\n\n"
+        f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀"
+    )
+    keyboard = [[InlineKeyboardButton("❌ CANCELAR", callback_data=f"alianza_chat_{alianza_id}")]]
+    await query.edit_message_text(text=mensaje, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    return MENSAJE_TEXTO
+
+async def recibir_mensaje_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    alianza_id = context.user_data.get('chat_alianza')
+    if not alianza_id:
+        await update.message.reply_text("❌ Sesión expirada")
+        return ConversationHandler.END
+    texto = update.message.text.strip()
+    if not texto:
+        await update.message.reply_text("❌ El mensaje no puede estar vacío.")
+        return MENSAJE_TEXTO
+    username = AuthSystem.obtener_username(user_id)
+    mensajes_data = load_json(ALIANZA_MENSAJES_FILE) or {}
+    if alianza_id not in mensajes_data:
+        mensajes_data[alianza_id] = []
+    mensajes_data[alianza_id].append({
+        "fecha": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "user_id": user_id,
+        "username": username,
+        "texto": texto
+    })
+    # Mantener solo los últimos 20 mensajes
+    if len(mensajes_data[alianza_id]) > 20:
+        mensajes_data[alianza_id] = mensajes_data[alianza_id][-20:]
+    save_json(ALIANZA_MENSAJES_FILE, mensajes_data)
+    await update.message.reply_text(
+        f"✅ Mensaje enviado al chat de la alianza.",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("💬 VER CHAT", callback_data=f"alianza_chat_{alianza_id}")
+        ]])
+    )
+    context.user_data.pop('chat_alianza', None)
+    return ConversationHandler.END
+
+# ================= LISTA DE MIEMBROS =================
+@requiere_login
+async def ver_miembros(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
     user_id = query.from_user.id
     alianza_id = query.data.replace("alianza_miembros_", "")
-    
-    # Verificar que pertenezca a la alianza
     alianza_actual, _ = obtener_alianza_usuario(user_id)
     if alianza_actual != alianza_id:
         await query.answer("❌ No perteneces a esta alianza", show_alert=True)
         return
-    
-    # Obtener datos
     datos = load_json(ALIANZA_DATOS_FILE) or {}
     alianza = datos.get(alianza_id, {})
-    
     miembros = load_json(ALIANZA_MIEMBROS_FILE) or {}
     alianza_miembros = miembros.get(alianza_id, {})
-    
     if not alianza_miembros:
         await query.edit_message_text(
             f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
@@ -1182,36 +1119,29 @@ async def ver_miembros(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("◀️ VOLVER", callback_data=f"menu_alianza")
+                InlineKeyboardButton("◀️ VOLVER", callback_data="menu_alianza")
             ]])
         )
         return
-    
     mensaje = (
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
         f"📋 <b>MIEMBROS DE {alianza.get('nombre', 'ALIANZA')}</b> [{alianza_id}]\n"
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
     )
-    
-    # Separar por rangos
     fundador = None
     admins = []
     miembros_normales = []
-    
     for uid, miembro in alianza_miembros.items():
         rango = miembro.get("rango", "miembro")
         username = miembro.get("username", f"@{uid}")
-        
         if rango == "fundador":
             fundador = f"👑 {username} (ID: <code>{uid}</code>)\n"
         elif rango == "admin":
             admins.append(f"🔰 {username} (ID: <code>{uid}</code>)\n")
         else:
             miembros_normales.append(f"👤 {username} (ID: <code>{uid}</code>)\n")
-    
     if fundador:
         mensaje += f"<b>FUNDADOR:</b>\n{fundador}\n"
-    
     if admins:
         mensaje += f"<b>ADMINISTRADORES:</b>\n"
         for admin in admins[:10]:
@@ -1219,7 +1149,6 @@ async def ver_miembros(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(admins) > 10:
             mensaje += f"   ... y {len(admins) - 10} más\n"
         mensaje += "\n"
-    
     if miembros_normales:
         mensaje += f"<b>MIEMBROS:</b>\n"
         for miembro in miembros_normales[:15]:
@@ -1227,50 +1156,33 @@ async def ver_miembros(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(miembros_normales) > 15:
             mensaje += f"   ... y {len(miembros_normales) - 15} más\n"
         mensaje += "\n"
-    
     mensaje += f"📊 <b>TOTAL:</b> {len(alianza_miembros)} miembros\n\n"
     mensaje += f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀"
-    
     keyboard = [
-        [InlineKeyboardButton("◀️ VOLVER", callback_data=f"menu_alianza")],
+        [InlineKeyboardButton("◀️ VOLVER", callback_data="menu_alianza")],
         [InlineKeyboardButton("🏠 MENÚ PRINCIPAL", callback_data="menu_principal")]
     ]
-    
-    await query.edit_message_text(
-        text=mensaje,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
-    )
+    await query.edit_message_text(text=mensaje, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
 # ================= SALIR DE ALIANZA =================
-
 @requiere_login
 async def salir_alianza(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🚪 Sale de la alianza (solo miembros, no fundadores)"""
     query = update.callback_query
     await query.answer()
-    
     user_id = query.from_user.id
     username_tag = AuthSystem.obtener_username(user_id)
     alianza_id = query.data.replace("alianza_salir_", "")
-    
-    # Verificar que no sea fundador
     if es_fundador_alianza(user_id, alianza_id):
         await query.answer("❌ Los fundadores no pueden salir, deben disolver la alianza", show_alert=True)
         return
-    
-    # Eliminar de miembros
     miembros = load_json(ALIANZA_MIEMBROS_FILE) or {}
     if alianza_id in miembros and str(user_id) in miembros[alianza_id]:
         del miembros[alianza_id][str(user_id)]
         save_json(ALIANZA_MIEMBROS_FILE, miembros)
-        
-        # Quitar permisos de retiro
         permisos = load_json(ALIANZA_PERMISOS_FILE) or {}
         if alianza_id in permisos and user_id in permisos[alianza_id].get("retiro", []):
             permisos[alianza_id]["retiro"].remove(user_id)
             save_json(ALIANZA_PERMISOS_FILE, permisos)
-        
         await query.edit_message_text(
             f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
             f"✅ <b>HAS SALIDO DE LA ALIANZA</b>\n"
@@ -1282,7 +1194,6 @@ async def salir_alianza(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 InlineKeyboardButton("🌍 VOLVER", callback_data="menu_alianza")
             ]])
         )
-        
         logger.info(f"🚪 {username_tag} salió de {alianza_id}")
     else:
         await query.edit_message_text(
@@ -1297,31 +1208,29 @@ async def salir_alianza(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]])
         )
 
-# ================= PANEL DE ADMINISTRACIÓN DE ALIANZA =================
+# ================= PANEL DE ADMINISTRACIÓN =================
 
 @requiere_login
 async def panel_admin_alianza(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """⚙️ Panel de administración de alianza"""
     query = update.callback_query
     await query.answer()
-    
     user_id = query.from_user.id
     alianza_id = query.data.replace("alianza_admin_", "")
     
-    # Verificar permisos de admin
     if not es_admin_alianza(user_id, alianza_id):
         await query.answer("❌ No tienes permisos de administrador", show_alert=True)
         return
     
     datos = load_json(ALIANZA_DATOS_FILE) or {}
     alianza = datos.get(alianza_id, {})
+    banco_info = obtener_banco(alianza_id)
+    nivel_banco = banco_info["nivel"]
     
     mensaje = (
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
         f"⚙️ <b>ADMINISTRACIÓN DE {alianza.get('nombre', 'ALIANZA')}</b>\n"
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
         f"Selecciona una opción:\n\n"
-        f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀"
     )
     
     keyboard = [
@@ -1331,33 +1240,380 @@ async def panel_admin_alianza(update: Update, context: ContextTypes.DEFAULT_TYPE
         [InlineKeyboardButton("📝 EDITAR DESCRIPCIÓN", callback_data=f"alianza_editar_{alianza_id}")]
     ]
     
-    # Solo fundador puede disolver
+    if nivel_banco < BANCO_NIVEL_MAX:
+        keyboard.append([InlineKeyboardButton("🏦 MEJORAR BANCO", callback_data=f"alianza_mejorar_banco_{alianza_id}")])
+    
     if es_fundador_alianza(user_id, alianza_id):
         keyboard.append([InlineKeyboardButton("⚠️ DISOLVER ALIANZA", callback_data=f"alianza_disolver_{alianza_id}")])
     
-    keyboard.append([InlineKeyboardButton("◀️ VOLVER", callback_data=f"menu_alianza")])
+    keyboard.append([InlineKeyboardButton("◀️ VOLVER", callback_data="menu_alianza")])
+    
+    await query.edit_message_text(text=mensaje, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+
+# ================= SOLICITUDES PENDIENTES =================
+
+@requiere_login
+async def ver_solicitudes(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    alianza_id = query.data.replace("alianza_solicitudes_", "")
+    
+    if not es_admin_alianza(user_id, alianza_id):
+        await query.answer("❌ No tienes permisos", show_alert=True)
+        return
+    
+    solicitudes_data = load_json(ALIANZA_SOLICITUDES_FILE) or {}
+    solicitudes = solicitudes_data.get(alianza_id, [])
+    
+    if not solicitudes:
+        await query.edit_message_text(
+            f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
+            f"📭 <b>No hay solicitudes pendientes</b>\n"
+            f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("◀️ VOLVER", callback_data=f"alianza_admin_{alianza_id}")
+            ]])
+        )
+        return
+    
+    mensaje = (
+        f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
+        f"📥 <b>SOLICITUDES PENDIENTES</b>\n"
+        f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
+    )
+    keyboard = []
+    for sol in solicitudes[:10]:
+        uid = sol["user_id"]
+        username = sol["username"]
+        fecha = sol["fecha"][:16]
+        mensaje += f"👤 {username} (ID: <code>{uid}</code>)\n   🕐 {fecha}\n\n"
+        keyboard.append([
+            InlineKeyboardButton(f"✅ Aceptar {username}", callback_data=f"alianza_aceptar_solicitud_{alianza_id}_{uid}"),
+            InlineKeyboardButton(f"❌ Rechazar {username}", callback_data=f"alianza_rechazar_solicitud_{alianza_id}_{uid}")
+        ])
+    
+    keyboard.append([InlineKeyboardButton("◀️ VOLVER", callback_data=f"alianza_admin_{alianza_id}")])
+    await query.edit_message_text(text=mensaje, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+
+@requiere_login
+async def aceptar_solicitud(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    partes = query.data.split("_")
+    alianza_id = partes[3]
+    solicitante_id = int(partes[4])
+    admin_id = query.from_user.id
+    
+    if not es_admin_alianza(admin_id, alianza_id):
+        await query.answer("❌ No tienes permisos", show_alert=True)
+        return
+    
+    ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    username_sol = AuthSystem.obtener_username(solicitante_id)
+    
+    # Agregar a miembros
+    miembros = load_json(ALIANZA_MIEMBROS_FILE) or {}
+    if alianza_id not in miembros:
+        miembros[alianza_id] = {}
+    miembros[alianza_id][str(solicitante_id)] = {
+        "user_id": solicitante_id,
+        "username": username_sol,
+        "rango": "miembro",
+        "fecha_ingreso": ahora
+    }
+    save_json(ALIANZA_MIEMBROS_FILE, miembros)
+    
+    # Eliminar de solicitudes
+    solicitudes_data = load_json(ALIANZA_SOLICITUDES_FILE) or {}
+    if alianza_id in solicitudes_data:
+        solicitudes_data[alianza_id] = [s for s in solicitudes_data[alianza_id] if s["user_id"] != solicitante_id]
+        save_json(ALIANZA_SOLICITUDES_FILE, solicitudes_data)
+    
+    # Notificar al usuario
+    try:
+        datos = load_json(ALIANZA_DATOS_FILE) or {}
+        alianza = datos.get(alianza_id, {})
+        nombre_alianza = alianza.get("nombre", alianza_id)
+        await context.bot.send_message(
+            chat_id=solicitante_id,
+            text=f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
+                 f"✅ <b>¡SOLICITUD ACEPTADA!</b>\n"
+                 f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
+                 f"Has sido aceptado en <b>{nombre_alianza}</b> [{alianza_id}].\n\n"
+                 f"🌍 Usa /start y ve a Alianzas para acceder.",
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        logger.error(f"❌ Error notificando a {solicitante_id}: {e}")
     
     await query.edit_message_text(
-        text=mensaje,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
+        f"✅ Solicitud de {username_sol} aceptada.",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("◀️ VOLVER", callback_data=f"alianza_solicitudes_{alianza_id}")
+        ]])
     )
 
 @requiere_login
-async def gestionar_permisos(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🔑 Gestiona permisos de retiro"""
+async def rechazar_solicitud(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    partes = query.data.split("_")
+    alianza_id = partes[3]
+    solicitante_id = int(partes[4])
+    admin_id = query.from_user.id
     
+    if not es_admin_alianza(admin_id, alianza_id):
+        await query.answer("❌ No tienes permisos", show_alert=True)
+        return
+    
+    username_sol = AuthSystem.obtener_username(solicitante_id)
+    
+    # Eliminar de solicitudes
+    solicitudes_data = load_json(ALIANZA_SOLICITUDES_FILE) or {}
+    if alianza_id in solicitudes_data:
+        solicitudes_data[alianza_id] = [s for s in solicitudes_data[alianza_id] if s["user_id"] != solicitante_id]
+        save_json(ALIANZA_SOLICITUDES_FILE, solicitudes_data)
+    
+    # Notificar al usuario (opcional)
+    try:
+        datos = load_json(ALIANZA_DATOS_FILE) or {}
+        alianza = datos.get(alianza_id, {})
+        nombre_alianza = alianza.get("nombre", alianza_id)
+        await context.bot.send_message(
+            chat_id=solicitante_id,
+            text=f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
+                 f"❌ <b>SOLICITUD RECHAZADA</b>\n"
+                 f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
+                 f"Tu solicitud para unirte a <b>{nombre_alianza}</b> [{alianza_id}] ha sido rechazada.",
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        logger.error(f"❌ Error notificando a {solicitante_id}: {e}")
+    
+    await query.edit_message_text(
+        f"❌ Solicitud de {username_sol} rechazada.",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("◀️ VOLVER", callback_data=f"alianza_solicitudes_{alianza_id}")
+        ]])
+    )
+
+# ================= EXPULSAR MIEMBRO =================
+
+@requiere_login
+async def expulsar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    alianza_id = query.data.replace("alianza_expulsar_", "")
+    
+    if not es_admin_alianza(user_id, alianza_id):
+        await query.answer("❌ No tienes permisos", show_alert=True)
+        return
+    
+    miembros = load_json(ALIANZA_MIEMBROS_FILE) or {}
+    alianza_miembros = miembros.get(alianza_id, {})
+    datos = load_json(ALIANZA_DATOS_FILE) or {}
+    fundador_id = datos.get(alianza_id, {}).get("fundador")
+    
+    mensaje = (
+        f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
+        f"❌ <b>EXPULSAR MIEMBRO</b>\n"
+        f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
+        f"Selecciona el miembro a expulsar:\n\n"
+    )
+    keyboard = []
+    for uid_str, miembro in alianza_miembros.items():
+        uid = int(uid_str)
+        if uid == fundador_id or uid == user_id:
+            continue
+        username = miembro.get("username", f"@{uid}")
+        keyboard.append([InlineKeyboardButton(
+            f"❌ {username}",
+            callback_data=f"alianza_confirmar_expulsion_{alianza_id}_{uid}"
+        )])
+    keyboard.append([InlineKeyboardButton("◀️ CANCELAR", callback_data=f"alianza_admin_{alianza_id}")])
+    
+    await query.edit_message_text(text=mensaje, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+
+@requiere_login
+async def confirmar_expulsion(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    partes = query.data.split("_")
+    alianza_id = partes[3]
+    miembro_id = int(partes[4])
+    admin_id = query.from_user.id
+    
+    if not es_admin_alianza(admin_id, alianza_id):
+        await query.answer("❌ No tienes permisos", show_alert=True)
+        return
+    
+    # Eliminar de miembros
+    miembros = load_json(ALIANZA_MIEMBROS_FILE) or {}
+    if alianza_id in miembros and str(miembro_id) in miembros[alianza_id]:
+        del miembros[alianza_id][str(miembro_id)]
+        save_json(ALIANZA_MIEMBROS_FILE, miembros)
+    
+    # Eliminar permisos de retiro
+    permisos = load_json(ALIANZA_PERMISOS_FILE) or {}
+    if alianza_id in permisos and miembro_id in permisos[alianza_id].get("retiro", []):
+        permisos[alianza_id]["retiro"].remove(miembro_id)
+        save_json(ALIANZA_PERMISOS_FILE, permisos)
+    
+    username = AuthSystem.obtener_username(miembro_id)
+    admin_username = AuthSystem.obtener_username(admin_id)
+    
+    await query.edit_message_text(
+        f"✅ <b>MIEMBRO EXPULSADO</b>\n\n{username} ha sido expulsado de la alianza.",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("◀️ VOLVER", callback_data=f"alianza_admin_{alianza_id}")
+        ]])
+    )
+    logger.info(f"❌ {username} expulsado de {alianza_id} por {admin_username}")
+
+# ================= EDITAR DESCRIPCIÓN =================
+
+@requiere_login
+async def editar_descripcion_inicio(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    alianza_id = query.data.replace("alianza_editar_", "")
+    
+    if not es_admin_alianza(user_id, alianza_id):
+        await query.answer("❌ No tienes permisos", show_alert=True)
+        return
+    
+    context.user_data['editando_desc_alianza'] = alianza_id
+    
+    mensaje = (
+        f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
+        f"📝 <b>EDITAR DESCRIPCIÓN</b>\n"
+        f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
+        f"Escribe la nueva descripción de la alianza (máx 200 caracteres):\n\n"
+        f"<i>Envía /cancelar para abortar.</i>"
+    )
+    await query.edit_message_text(
+        text=mensaje,
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("❌ CANCELAR", callback_data=f"alianza_admin_{alianza_id}")
+        ]])
+    )
+    return EDITAR_DESCRIPCION
+
+async def recibir_nueva_descripcion(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    alianza_id = context.user_data.get('editando_desc_alianza')
+    if not alianza_id:
+        await update.message.reply_text("❌ Sesión expirada")
+        return ConversationHandler.END
+    
+    texto = update.message.text.strip()
+    if len(texto) > 200:
+        await update.message.reply_text("❌ La descripción no puede exceder 200 caracteres. Intenta de nuevo.")
+        return EDITAR_DESCRIPCION
+    
+    datos = load_json(ALIANZA_DATOS_FILE) or {}
+    if alianza_id not in datos:
+        await update.message.reply_text("❌ Alianza no encontrada")
+        return ConversationHandler.END
+    
+    datos[alianza_id]["descripcion"] = texto
+    save_json(ALIANZA_DATOS_FILE, datos)
+    
+    await update.message.reply_text(
+        f"✅ Descripción actualizada.",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("🌍 VOLVER A ALIANZA", callback_data="menu_alianza")
+        ]])
+    )
+    context.user_data.pop('editando_desc_alianza', None)
+    return ConversationHandler.END
+
+# ================= DISOLVER ALIANZA =================
+
+@requiere_login
+async def disolver_confirmar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    alianza_id = query.data.replace("alianza_disolver_", "")
+    
+    if not es_fundador_alianza(user_id, alianza_id):
+        await query.answer("❌ Solo el fundador puede disolver la alianza", show_alert=True)
+        return
+    
+    mensaje = (
+        f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
+        f"⚠️ <b>DISOLVER ALIANZA</b>\n"
+        f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
+        f"¿Estás seguro de que quieres disolver la alianza?\n"
+        f"Esta acción es irreversible y todos los datos se perderán.\n\n"
+        f"<i>Confirma escribiendo 'DISOLVER' exactamente:</i>"
+    )
+    
+    context.user_data['disolver_alianza'] = alianza_id
+    await query.edit_message_text(
+        text=mensaje,
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("❌ CANCELAR", callback_data=f"menu_alianza")
+        ]])
+    )
+    return DISOLVER_CONFIRMAR
+
+async def disolver_ejecutar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    alianza_id = context.user_data.get('disolver_alianza')
+    if not alianza_id:
+        await update.message.reply_text("❌ Sesión expirada")
+        return ConversationHandler.END
+    
+    texto = update.message.text.strip()
+    if texto != "DISOLVER":
+        await update.message.reply_text("❌ Confirmación incorrecta. Operación cancelada.")
+        context.user_data.pop('disolver_alianza', None)
+        return ConversationHandler.END
+    
+    # Eliminar todos los archivos relacionados
+    for archivo in [ALIANZA_DATOS_FILE, ALIANZA_MIEMBROS_FILE, ALIANZA_BANCO_FILE,
+                    ALIANZA_PERMISOS_FILE, ALIANZA_MENSAJES_FILE, ALIANZA_SOLICITUDES_FILE]:
+        data = load_json(archivo) or {}
+        if alianza_id in data:
+            del data[alianza_id]
+            save_json(archivo, data)
+    
+    await update.message.reply_text(
+        f"✅ La alianza ha sido disuelta.",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("🌍 VOLVER", callback_data="menu_alianza")
+        ]])
+    )
+    context.user_data.pop('disolver_alianza', None)
+    logger.info(f"💥 Alianza {alianza_id} disuelta por {AuthSystem.obtener_username(user_id)}")
+    return ConversationHandler.END
+
+# ================= GESTIONAR PERMISOS =================
+
+@requiere_login
+async def gestionar_permisos(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
     user_id = query.from_user.id
     alianza_id = query.data.replace("alianza_permisos_", "")
     
-    # Verificar permisos de admin
     if not es_admin_alianza(user_id, alianza_id):
         await query.answer("❌ No tienes permisos de administrador", show_alert=True)
         return
     
-    # Obtener datos
+    datos = load_json(ALIANZA_DATOS_FILE) or {}
+    alianza = datos.get(alianza_id, {})
+    fundador_id = alianza.get("fundador")
+    
     miembros = load_json(ALIANZA_MIEMBROS_FILE) or {}
     alianza_miembros = miembros.get(alianza_id, {})
     
@@ -1387,56 +1643,41 @@ async def gestionar_permisos(update: Update, context: ContextTypes.DEFAULT_TYPE)
     mensaje += f"<i>Selecciona un miembro para dar/quitar permiso:</i>\n\n"
     mensaje += f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀"
     
-    # Crear botones para miembros (máximo 12)
     keyboard = []
     fila = []
-    
-    for i, (uid, miembro) in enumerate(list(alianza_miembros.items())[:12]):
-        if int(uid) == alianza.get("fundador"):
+    for uid, miembro in alianza_miembros.items():
+        if int(uid) == fundador_id:
             continue
-        
         username = miembro.get("username", f"@{uid}")[:10]
         tiene_permiso = int(uid) in retiro_permisos
         prefijo = "✅" if tiene_permiso else "❌"
-        
         fila.append(InlineKeyboardButton(
             f"{prefijo} {username}",
             callback_data=f"alianza_toggle_permiso_{alianza_id}_{uid}"
         ))
-        
         if len(fila) == 2:
             keyboard.append(fila)
             fila = []
-    
     if fila:
         keyboard.append(fila)
     
-    keyboard.append([InlineKeyboardButton("◀️ VOLVER", callback_data=f"alianza_admin_{alianza_id}")])
+    keyboard.append([InlineKeyboardButton("◀️ VOLVER", callback_data=f"menu_alianza")])
     
-    await query.edit_message_text(
-        text=mensaje,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
-    )
+    await query.edit_message_text(text=mensaje, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
 @requiere_login
 async def toggle_permiso(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🔄 Activa/desactiva permiso de retiro"""
     query = update.callback_query
     await query.answer()
-    
     partes = query.data.split("_")
     alianza_id = partes[3]
     miembro_id = int(partes[4])
-    
     admin_id = query.from_user.id
     
-    # Verificar permisos de admin
     if not es_admin_alianza(admin_id, alianza_id):
         await query.answer("❌ No tienes permisos de administrador", show_alert=True)
         return
     
-    # Obtener permisos actuales
     permisos = load_json(ALIANZA_PERMISOS_FILE) or {}
     if alianza_id not in permisos:
         permisos[alianza_id] = {"retiro": []}
@@ -1445,8 +1686,6 @@ async def toggle_permiso(update: Update, context: ContextTypes.DEFAULT_TYPE):
         permisos[alianza_id]["retiro"].remove(miembro_id)
         accion = "quitado"
     else:
-        if "retiro" not in permisos[alianza_id]:
-            permisos[alianza_id]["retiro"] = []
         permisos[alianza_id]["retiro"].append(miembro_id)
         accion = "otorgado"
     
@@ -1468,24 +1707,21 @@ async def toggle_permiso(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("◀️ VOLVER", callback_data=f"alianza_permisos_{alianza_id}")
         ]])
     )
-    
     logger.info(f"🔑 Permiso de retiro {accion} para {miembro_username} por {admin_username}")
 
 # ================= CANCELAR CONVERSACIÓN =================
 
 async def cancelar_conversacion(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """❌ Cancela la conversación actual"""
     user_id = update.effective_user.id
     username_tag = AuthSystem.obtener_username(user_id)
-    
     keys_to_clear = ['alianza_nombre', 'donacion_alianza', 'donacion_metal', 
                      'donacion_cristal', 'retiro_alianza', 'retiro_metal', 
-                     'retiro_cristal']
-    
+                     'retiro_cristal', 'mejora_banco_alianza', 'mejora_banco_costo',
+                     'mejora_banco_nuevo_nivel', 'chat_alianza', 'editando_desc_alianza',
+                     'disolver_alianza']
     for key in keys_to_clear:
         if key in context.user_data:
             del context.user_data[key]
-    
     await update.message.reply_text(
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
         f"❌ <b>OPERACIÓN CANCELADA</b>\n"
@@ -1495,60 +1731,65 @@ async def cancelar_conversacion(update: Update, context: ContextTypes.DEFAULT_TY
             InlineKeyboardButton("🌍 VOLVER A ALIANZA", callback_data="menu_alianza")
         ]])
     )
-    
     return ConversationHandler.END
 
 # ================= HANDLERS PARA CALLBACKS =================
 
 async def alianza_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """🎯 Handler para callbacks de alianza"""
     query = update.callback_query
     data = query.data
-    
     if data == "menu_alianza":
         await menu_alianza_principal(update, context)
         return ConversationHandler.END
-    
     elif data == "alianza_crear":
         return await iniciar_creacion_alianza(update, context)
-    
     elif data == "alianza_buscar":
         return await iniciar_busqueda_alianza(update, context)
-    
     elif data.startswith("alianza_solicitar_"):
         await enviar_solicitud_alianza(update, context)
-    
     elif data.startswith("alianza_aceptar_") or data.startswith("alianza_rechazar_"):
         await decision_solicitud_alianza(update, context)
-    
     elif data.startswith("alianza_donar_"):
         return await iniciar_donacion(update, context)
-    
     elif data.startswith("alianza_confirmar_donacion_"):
         await confirmar_donacion(update, context)
-    
     elif data.startswith("alianza_miembros_"):
         await ver_miembros(update, context)
-    
     elif data.startswith("alianza_salir_"):
         await salir_alianza(update, context)
-    
     elif data.startswith("alianza_admin_"):
         await panel_admin_alianza(update, context)
-    
     elif data.startswith("alianza_permisos_"):
         await gestionar_permisos(update, context)
-    
     elif data.startswith("alianza_toggle_permiso_"):
         await toggle_permiso(update, context)
-    
+    elif data.startswith("alianza_mejorar_banco_"):
+        return await iniciar_mejora_banco(update, context)
+    elif data == "alianza_confirmar_mejora_banco":
+        return await confirmar_mejora_banco(update, context)
+    elif data.startswith("alianza_chat_"):
+        await ver_chat_alianza(update, context)
+    elif data.startswith("alianza_escribir_chat_"):
+        return await iniciar_escribir_chat(update, context)
+    elif data.startswith("alianza_solicitudes_"):
+        await ver_solicitudes(update, context)
+    elif data.startswith("alianza_aceptar_solicitud_"):
+        await aceptar_solicitud(update, context)
+    elif data.startswith("alianza_rechazar_solicitud_"):
+        await rechazar_solicitud(update, context)
+    elif data.startswith("alianza_expulsar_"):
+        await expulsar_menu(update, context)
+    elif data.startswith("alianza_confirmar_expulsion_"):
+        await confirmar_expulsion(update, context)
+    elif data.startswith("alianza_editar_"):
+        return await editar_descripcion_inicio(update, context)
+    elif data.startswith("alianza_disolver_"):
+        return await disolver_confirmar(update, context)
     return ConversationHandler.END
 
 # ================= CONFIGURAR CONVERSATION HANDLERS =================
 
 def obtener_conversation_handlers():
-    """🔄 Retorna los ConversationHandlers para alianza"""
-    
     crear_handler = ConversationHandler(
         entry_points=[CallbackQueryHandler(iniciar_creacion_alianza, pattern="^alianza_crear$")],
         states={
@@ -1576,7 +1817,47 @@ def obtener_conversation_handlers():
         fallbacks=[CommandHandler("cancelar", cancelar_conversacion)]
     )
     
-    return [crear_handler, buscar_handler, donacion_handler]
+    mejora_banco_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(iniciar_mejora_banco, pattern="^alianza_mejorar_banco_")],
+        states={
+            MEJORAR_BANCO_CONFIRMAR: [CallbackQueryHandler(confirmar_mejora_banco, pattern="^alianza_confirmar_mejora_banco$")],
+        },
+        fallbacks=[CommandHandler("cancelar", cancelar_conversacion)]
+    )
+    
+    chat_escribir_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(iniciar_escribir_chat, pattern="^alianza_escribir_chat_")],
+        states={
+            MENSAJE_TEXTO: [MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_mensaje_chat)],
+        },
+        fallbacks=[CommandHandler("cancelar", cancelar_conversacion)]
+    )
+    
+    editar_desc_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(editar_descripcion_inicio, pattern="^alianza_editar_")],
+        states={
+            EDITAR_DESCRIPCION: [MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_nueva_descripcion)],
+        },
+        fallbacks=[CommandHandler("cancelar", cancelar_conversacion)]
+    )
+    
+    disolver_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(disolver_confirmar, pattern="^alianza_disolver_")],
+        states={
+            DISOLVER_CONFIRMAR: [MessageHandler(filters.TEXT & ~filters.COMMAND, disolver_ejecutar)],
+        },
+        fallbacks=[CommandHandler("cancelar", cancelar_conversacion)]
+    )
+    
+    return [
+        crear_handler,
+        buscar_handler,
+        donacion_handler,
+        mejora_banco_handler,
+        chat_escribir_handler,
+        editar_desc_handler,
+        disolver_handler
+    ]
 
 # ================= EXPORTAR =================
 
