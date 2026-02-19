@@ -469,7 +469,7 @@ def main():
     # Arranque
     if WEBHOOK_URL:
         logger.info("Iniciando webhook en %s:%s", "0.0.0.0", PORT)
-        application.run_webhook(listen="0.0.0.0", port=PORT, url_path=TOKEN, webhook_url=f"{WEBHOOK_URL}")
+        app.run_webhook(listen="0.0.0.0", port=PORT, url_path=TOKEN, webhook_url=f"{WEBHOOK_URL}")
     else:
         logger.info("WEBHOOK_URL no configurado, arrancando en polling.")
         application.run_polling()
