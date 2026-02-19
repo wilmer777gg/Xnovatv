@@ -11,7 +11,10 @@
 #🚀 ASTRO.IO v2.4.0 🚀
 #🔐 login.py - SISTEMA CENTRAL DE AUTENTICACIÓN Y ARCHIVOS
 #==========================================================
-#✅ VERSIÓN CORREGIDA - CON LOGGING EXTREMO
+#✅ VERSIÓN CORREGIDA - CON NOTIFICACIONES COMPLETAS
+#✅ BOTONES ACEPTAR/RECHAZAR CON CALLBACKS CORRECTOS
+#✅ COORDENADAS INCLUIDAS EN EL MENSAJE
+#✅ LOGGING EXTREMO PARA DEPURACIÓN
 #==========================================================
 
 import os
@@ -34,13 +37,13 @@ logging.basicConfig(
 # ================= CONFIGURACIÓN DE RUTAS =================
 DATA_DIR = "data"
 
-# ================= CONFIGURACIÓN DE GITHUB (AÑADIDO) =================
+# ================= CONFIGURACIÓN DE GITHUB =================
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 GITHUB_OWNER = os.environ.get("GITHUB_OWNER")
 GITHUB_REPO = os.environ.get("GITHUB_REPO")
 USE_GITHUB_SYNC = os.getenv("USE_GITHUB_SYNC", "true").lower() == "true"
 
-# ========== ARCHIVOS JSON EXISTENTES ==========
+# ========== ARCHIVOS JSON ==========
 ADMINS_FILE = os.path.join(DATA_DIR, "admin.json")
 AUTHORIZED_USERS_FILE = os.path.join(DATA_DIR, "authorized_users.json")
 CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
@@ -64,7 +67,7 @@ FLOTA_USUARIO_FILE = os.path.join(DATA_DIR, "flota_usuario.json")
 INVESTIGACIONES_FILE = os.path.join(DATA_DIR, "investigaciones.json")
 INVESTIGACIONES_USUARIO_FILE = os.path.join(DATA_DIR, "investigaciones_usuario.json")
 
-# ========== 🆕 NUEVAS BASES DE DATOS DE FLOTA ==========
+# ========== 🆕 BASES DE DATOS DE FLOTA ==========
 MISIONES_FLOTA_FILE = os.path.join(DATA_DIR, "misiones_flota.json")
 BAJAS_FLOTA_FILE = os.path.join(DATA_DIR, "bajas_flota.json")
 GALAXIA_FILE = os.path.join(DATA_DIR, "galaxia.json")
@@ -686,7 +689,7 @@ class AuthSystem:
             return save_json(DATA_FILE, data)
         return True
 
-    # ================= 🔧 NUEVOS MÉTODOS DE MANTENIMIENTO =================
+    # ================= 🔧 MÉTODOS DE MANTENIMIENTO =================
     
     @staticmethod
     def obtener_estado_mantenimiento() -> bool:
@@ -701,15 +704,22 @@ class AuthSystem:
         config["mantenimiento"] = estado
         return save_json(CONFIG_FILE, config)
 
-# ================= 🔥 FUNCIÓN DE NOTIFICACIÓN CORREGIDA - CON LOGS EXTREMOS =================
+# ================= 🔥 FUNCIÓN DE NOTIFICACIÓN CORREGIDA - CON BOTONES Y COORDENADAS =================
 
 async def notificar_admins(context: ContextTypes.DEFAULT_TYPE, user_id: int, username: str):
     """
-    📨 NOTIFICA A TODOS LOS ADMINISTRADORES - VERSIÓN CON LOGS EXTREMOS
+    📨 NOTIFICA A TODOS LOS ADMINISTRADORES - VERSIÓN CORREGIDA
+    ✅ Incluye coordenadas del nuevo planeta
+    ✅ Botones ACEPTAR/RECHAZAR con callback_data correcto
+    ✅ Logs extremos para depuración
     """
     logger.info("=" * 60)
     logger.info("🚨 INICIANDO notificar_admins()")
     logger.info(f"👤 Nuevo usuario: {username} (ID: {user_id})")
+    
+    # Obtener coordenadas para el nuevo planeta
+    coords = obtener_coordenadas_libres()
+    coords_str = coordenadas_a_string(coords)
     
     # Obtener admins
     admins = AuthSystem.obtener_todos_admins()
@@ -724,21 +734,24 @@ async def notificar_admins(context: ContextTypes.DEFAULT_TYPE, user_id: int, use
     else:
         logger.info(f"✅ Admin principal {ADMIN_USER_ID} encontrado en admin.json")
     
+    # ========== 📨 CONSTRUIR MENSAJE CON BOTONES Y COORDENADAS ==========
     mensaje = (
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
         f"📨 <b>NUEVA SOLICITUD DE REGISTRO</b>\n"
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
-        f"👤 Usuario: @{username}\n"
-        f"🆔 ID: <code>{user_id}</code>\n"
-        f"📅 Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+        f"👤 <b>Usuario:</b> @{username}\n"
+        f"🆔 <b>ID:</b> <code>{user_id}</code>\n"
+        f"🪐 <b>Coordenadas:</b> {coords_str}\n"
+        f"📅 <b>Fecha:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
         f"Selecciona una acción:\n\n"
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀"
     )
     
+    # 🔥 BOTONES - Usando "rechazar_" en lugar de "cancelar_" para consistencia
     keyboard = [
         [
             InlineKeyboardButton("✅ ACEPTAR", callback_data=f"aceptar_{user_id}"),
-            InlineKeyboardButton("❌ RECHAZAR", callback_data=f"cancelar_{user_id}")
+            InlineKeyboardButton("❌ RECHAZAR", callback_data=f"rechazar_{user_id}")
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -920,7 +933,7 @@ __all__ = [
     'generar_coordenadas_aleatorias',
     'obtener_coordenadas_libres',
     'coordenadas_a_string',
-    # 👇 EXPORTAR LAS NUEVAS VARIABLES DE GITHUB
+    # 👇 EXPORTAR LAS VARIABLES DE GITHUB
     'GITHUB_TOKEN',
     'GITHUB_OWNER',
     'GITHUB_REPO',

@@ -111,7 +111,7 @@ def verificar_configuracion_github():
 verificar_configuracion_github()
 
 # ========== IMPORTAR MÓDULOS ==========
-from usuarios import start_handler, decision_handler
+from usuarios import start_handler, decision_handler, aceptar_usuario, rechazar_usuario
 from recursos import mostrar_recursos
 from callback_handlers import callback_handler
 
@@ -363,7 +363,7 @@ def main():
     # Crear aplicación
     app = Application.builder().token(TOKEN).build()
     
-    # Configurar timeouts (según versión)
+    # Configurar timeouts
     try:
         app.bot.request._request_timeout = 30
         app.bot.request.connect_timeout = 30
@@ -404,9 +404,17 @@ def main():
             app.add_handler(handler)
         logger.info(f"✅ {len(obtener_conversation_handlers_mercado())} ConversationHandlers de mercado registrados")
     
-    # ========== CALLBACKS ==========
+    # ========== 🔥 CALLBACKS CORREGIDOS ==========
+    
+    # ✅ Handlers DIRECTOS para aceptar/rechazar usuarios (MÁXIMA PRIORIDAD)
+    app.add_handler(CallbackQueryHandler(aceptar_usuario, pattern=r"^aceptar_\d+$"))
+    app.add_handler(CallbackQueryHandler(rechazar_usuario, pattern=r"^rechazar_\d+$"))
+    
+    # ✅ Handler general para todos los demás callbacks
     app.add_handler(CallbackQueryHandler(callback_handler))
-    app.add_handler(CallbackQueryHandler(decision_handler, pattern="^(aceptar_|cancelar_).*$"))
+    
+    # ❌ El antiguo decision_handler ya no es necesario
+    # app.add_handler(CallbackQueryHandler(decision_handler, pattern="^(aceptar_|cancelar_).*$"))
     
     # ========== MENSAJES DE TEXTO ==========
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_mensajes_handler))
@@ -458,52 +466,13 @@ def main():
     print("=" * 60 + "\n")
     
     # Decidir modo: webhook si WEBHOOK_URL está definida, sino polling
+    # Arranque
     if WEBHOOK_URL:
-        # Configurar webhook
-        async def setup_webhook():
-            webhook_url = f"{WEBHOOK_URL.rstrip('/')}/{TOKEN}"
-            await app.bot.set_webhook(url=webhook_url)
-            logger.info(f"✅ Webhook configurado en {webhook_url}")
-            # Iniciar webhook (corriendo en el puerto asignado)
-            await app.start_webhook(
-                listen="0.0.0.0",
-                port=PORT,
-                url_path=TOKEN,
-                webhook_url=webhook_url
-            )
-        
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            loop.run_until_complete(setup_webhook())
-            logger.info(f"🚀 Bot iniciado en modo webhook en puerto {PORT}")
-            loop.run_forever()
-        except KeyboardInterrupt:
-            print("\n👋 Bot detenido manualmente")
-        finally:
-            loop.close()
+        logger.info("Iniciando webhook en %s:%s", "0.0.0.0", PORT)
+        application.run_webhook(listen="0.0.0.0", port=PORT, url_path=TOKEN, webhook_url=f"{WEBHOOK_URL}")
     else:
-        # Modo polling (local)
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            if loop.run_until_complete(verificar_conexion(app)):
-                logger.info("✅ Conexión verificada. Iniciando bot en modo polling...")
-                app.run_polling(
-                    allowed_updates=Update.ALL_TYPES,
-                    drop_pending_updates=True
-                )
-            else:
-                logger.error("❌ No se pudo establecer conexión. Saliendo...")
-                print("\n❌ Error de conexión. Verifica tu internet y reintenta.")
-        except KeyboardInterrupt:
-            print("\n👋 Bot detenido manualmente")
-        except Exception as e:
-            print(f"\n❌ Error crítico: {e}")
-            import traceback
-            traceback.print_exc()
-        finally:
-            loop.close()
+        logger.info("WEBHOOK_URL no configurado, arrancando en polling.")
+        application.run_polling()
 
 if __name__ == "__main__":
     try:

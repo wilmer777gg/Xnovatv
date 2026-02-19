@@ -15,6 +15,7 @@
 #✅ MANEJO CORRECTO de solicitudes pendientes
 #✅ NUEVO CALLBACK PARA MANTENIMIENTO
 #✅ INTEGRACIÓN CON MERCADO
+#⚠️ LOS CALLBACKS DE ADMIN (aceptar_/rechazar_) SON MANEJADOS DIRECTAMENTE EN AstroIO.py
 #===========================================================
 
 import logging
@@ -30,7 +31,7 @@ from usuarios import (
     mejorar_investigacion_menu, admin_callback_handler, limpiar_colas_handler,
     admin_estadisticas_handler, lista_administradores_handler, remover_admin_menu,
     backup_callback_handler, obtener_conversation_handlers_backup,
-    decision_handler, toggle_mantenimiento_handler  # 👈 IMPORTADO
+    toggle_mantenimiento_handler  # 👈 SOLO mantenimiento, NO decision_handler
 )
 from edificios import (
     menu_edificios_principal, submenu_edificio, construir_handler,
@@ -61,7 +62,7 @@ from base_flotas import (
     reporte_misiones_activas,
     reporte_historial_bajas
 )
-from mercado import mercado_callback_handler  # 👈 NUEVO: importar mercado
+from mercado import mercado_callback_handler
 
 logger = logging.getLogger(__name__)
 
@@ -75,11 +76,16 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     logger.info(f"📱 Callback: {data} - User: {user_id}")
     
-    # ========== DECISIONES DE ADMIN (ACEPTAR/RECHAZAR) ==========
-    if data.startswith("aceptar_") or data.startswith("cancelar_"):
+    # ========== ⚠️ IMPORTANTE: DECISIONES DE ADMIN ==========
+    # Los callbacks "aceptar_*" y "rechazar_*" son manejados DIRECTAMENTE
+    # por handlers específicos en AstroIO.py con mayor prioridad.
+    # Este bloque está COMENTADO para evitar conflictos.
+    """
+    if data.startswith("aceptar_") or data.startswith("rechazar_"):
         logger.info(f"👑 Procesando decisión admin: {data}")
-        await decision_handler(update, context)
+        # Estos son manejados por handlers directos en AstroIO.py
         return
+    """
     
     # ========== MENÚ PRINCIPAL ==========
     if data == "menu_principal":
@@ -175,7 +181,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await puntuacion_callback_handler(update, context)
     
     # ========== MERCADO ==========
-    elif data.startswith("mercado_"):                      # 👈 NUEVA RAMA
+    elif data.startswith("mercado_"):
         await mercado_callback_handler(update, context)
     
     # ========== ADMIN - PANEL PRINCIPAL ==========
@@ -190,7 +196,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "admin_lista_admins":
         await lista_administradores_handler(update, context)
     
-    # ========== 👑 NUEVO CALLBACK PARA MANTENIMIENTO ==========
+    # ========== 👑 CALLBACK PARA MANTENIMIENTO ==========
     elif data == "admin_toggle_mantenimiento":
         logger.info(f"🔧 Admin {user_id} alternando modo mantenimiento")
         await toggle_mantenimiento_handler(update, context)

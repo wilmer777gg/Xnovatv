@@ -15,6 +15,7 @@
 #✅ BOTONES DIRECTOS EN LISTA DE PENDIENTES
 #✅ FUNCIÓN notificar_admins() IMPORTADA DE LOGIN
 #✅ BOTÓN DE MANTENIMIENTO EN PANEL ADMIN
+#✅ HANDLERS DIRECTOS aceptar_usuario Y rechazar_usuario AÑADIDOS
 #===========================================================
 
 import os
@@ -781,16 +782,16 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML"
     )
 
-# ================= 👑 DECISIONES DE ADMIN =================
+# ================= ✅ HANDLER DIRECTO PARA ACEPTAR USUARIO =================
 
-async def decision_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """👑 Manejador para aceptar/rechazar usuarios"""
+async def aceptar_usuario(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """✅ Acepta un usuario pendiente (MANEJADOR DIRECTO)"""
     query = update.callback_query
     await query.answer()
     
     try:
-        accion, user_id_str = query.data.split("_")
-        user_id = int(user_id_str)
+        # Extraer user_id del callback_data (ej: "aceptar_123456789")
+        user_id = int(query.data.split("_")[1])
     except Exception as e:
         logger.error(f"❌ Error parseando callback: {query.data} - {e}")
         await query.edit_message_text("❌ Datos inválidos", parse_mode="HTML")
@@ -801,100 +802,152 @@ async def decision_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     usuario_data = AuthSystem.obtener_usuario(user_id)
     username = usuario_data.get("username", f"Usuario {user_id}")
     
-    if accion == "aceptar":
-        success, message = AuthSystem.autorizar_usuario(user_id, username.replace('@', ''))
-        
-        if success:
-            # ========== ✅ ENVIAR MENSAJE DE BIENVENIDA ==========
-            try:
-                from menus_principal import menu_bienvenida
-                
-                # Obtener el username limpio
-                username_limpio = username.replace('@', '') if username.startswith('@') else username
-                
-                # Enviar bienvenida
-                await menu_bienvenida(context, user_id, username_limpio)
-                logger.info(f"✅ Bienvenida enviada a {username}")
-                
-            except Exception as e:
-                logger.error(f"❌ Error en menu_bienvenida: {e}")
-                
-                # FALLBACK: Enviar mensaje simple
-                try:
-                    mensaje_bienvenida = (
-                        f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
-                        f"✅ <b>¡BIENVENIDO A ASTROIO!</b>\n"
-                        f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
-                        f"¡Has sido autorizado!\n\n"
-                        f"Usa /start para comenzar tu aventura espacial.\n\n"
-                        f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀"
-                    )
-                    
-                    await context.bot.send_message(
-                        chat_id=user_id,
-                        text=mensaje_bienvenida,
-                        parse_mode="HTML"
-                    )
-                    logger.info(f"✅ Mensaje de bienvenida simple enviado a {username}")
-                    
-                except Exception as e2:
-                    logger.error(f"❌ Error enviando mensaje simple a {user_id}: {e2}")
-            
-            # ========== ✅ ACTUALIZAR MENSAJE DEL ADMIN ==========
-            await query.edit_message_text(
-                f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
-                f"✅ <b>USUARIO ACEPTADO</b>\n"
-                f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
-                f"👤 Usuario: {username}\n"
-                f"🆔 ID: <code>{user_id}</code>\n"
-                f"👑 Admin: {admin_username}\n"
-                f"📅 Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
-                f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀",
-                parse_mode="HTML"
-            )
-            logger.info(f"✅ Usuario {username} aceptado por {admin_username}")
-        else:
-            await query.edit_message_text(
-                f"❌ <b>Error al aceptar usuario</b>\n\n{message}",
-                parse_mode="HTML"
-            )
+    logger.info(f"✅ Admin {admin_username} aceptando usuario {username} (ID: {user_id})")
     
-    elif accion == "cancelar":
-        AuthSystem.rechazar_usuario(user_id)
+    # ========== 1. AÑADIR A AUTORIZADOS ==========
+    autorizados = load_json(AUTHORIZED_USERS_FILE) or []
+    if user_id not in autorizados:
+        autorizados.append(user_id)
+        save_json(AUTHORIZED_USERS_FILE, autorizados)
+        logger.info(f"✅ Usuario {user_id} añadido a authorized_users.json")
+    
+    # ========== 2. INICIALIZAR RECURSOS ==========
+    AuthSystem.inicializar_usuario_completo(user_id, username.replace('@', ''))
+    
+    # ========== 3. ENVIAR BIENVENIDA AL USUARIO ==========
+    try:
+        from menus_principal import menu_bienvenida
         
-        # ========== ❌ ENVIAR MENSAJE DE RECHAZO ==========
+        # Obtener el username limpio
+        username_limpio = username.replace('@', '') if username.startswith('@') else username
+        
+        # Enviar bienvenida
+        await menu_bienvenida(context, user_id, username_limpio)
+        logger.info(f"✅ Bienvenida enviada a {username}")
+        
+    except Exception as e:
+        logger.error(f"❌ Error en menu_bienvenida: {e}")
+        
+        # FALLBACK: Enviar mensaje simple
         try:
-            mensaje_rechazo = (
+            mensaje_bienvenida = (
                 f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
-                f"❌ <b>SOLICITUD RECHAZADA</b>\n"
+                f"✅ <b>¡BIENVENIDO A ASTROIO!</b>\n"
                 f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
-                f"Tu solicitud de registro ha sido rechazada.\n\n"
-                f"Si crees que esto es un error, contacta con el administrador.\n\n"
+                f"¡Has sido autorizado!\n\n"
+                f"Usa /start para comenzar tu aventura espacial.\n\n"
                 f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀"
             )
             
             await context.bot.send_message(
                 chat_id=user_id,
-                text=mensaje_rechazo,
+                text=mensaje_bienvenida,
                 parse_mode="HTML"
             )
-            logger.info(f"✅ Mensaje de rechazo enviado a {username}")
-        except Exception as e:
-            logger.error(f"❌ Error notificando rechazo a {user_id}: {e}")
-        
-        # ========== ✅ ACTUALIZAR MENSAJE DEL ADMIN ==========
-        await query.edit_message_text(
+            logger.info(f"✅ Mensaje de bienvenida simple enviado a {username}")
+            
+        except Exception as e2:
+            logger.error(f"❌ Error enviando mensaje simple a {user_id}: {e2}")
+    
+    # ========== 4. ACTUALIZAR MENSAJE DEL ADMIN ==========
+    await query.edit_message_text(
+        f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
+        f"✅ <b>USUARIO ACEPTADO</b>\n"
+        f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
+        f"👤 Usuario: {username}\n"
+        f"🆔 ID: <code>{user_id}</code>\n"
+        f"👑 Admin: {admin_username}\n"
+        f"📅 Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+        f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀",
+        parse_mode="HTML"
+    )
+    
+    logger.info(f"✅ Usuario {username} aceptado por {admin_username}")
+
+# ================= ❌ HANDLER DIRECTO PARA RECHAZAR USUARIO =================
+
+async def rechazar_usuario(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """❌ Rechaza un usuario pendiente (MANEJADOR DIRECTO)"""
+    query = update.callback_query
+    await query.answer()
+    
+    try:
+        # Extraer user_id del callback_data (ej: "rechazar_123456789")
+        user_id = int(query.data.split("_")[1])
+    except Exception as e:
+        logger.error(f"❌ Error parseando callback: {query.data} - {e}")
+        await query.edit_message_text("❌ Datos inválidos", parse_mode="HTML")
+        return
+    
+    admin_id = query.from_user.id
+    admin_username = obtener_username_display(admin_id)
+    usuario_data = AuthSystem.obtener_usuario(user_id)
+    username = usuario_data.get("username", f"Usuario {user_id}")
+    
+    logger.info(f"❌ Admin {admin_username} rechazando usuario {username} (ID: {user_id})")
+    
+    # ========== 1. ELIMINAR DE DATA.JSON ==========
+    data = load_json(DATA_FILE) or {}
+    if str(user_id) in data:
+        del data[str(user_id)]
+        save_json(DATA_FILE, data)
+        logger.info(f"✅ Usuario {user_id} eliminado de data.json")
+    
+    # ========== 2. ENVIAR MENSAJE DE RECHAZO AL USUARIO ==========
+    try:
+        mensaje_rechazo = (
             f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
-            f"❌ <b>USUARIO RECHAZADO</b>\n"
+            f"❌ <b>SOLICITUD RECHAZADA</b>\n"
             f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
-            f"👤 Usuario: {username}\n"
-            f"🆔 ID: <code>{user_id}</code>\n"
-            f"👑 Admin: {admin_username}\n"
-            f"📅 Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
-            f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀",
+            f"Tu solicitud de registro ha sido rechazada.\n\n"
+            f"Si crees que esto es un error, contacta con el administrador.\n\n"
+            f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀"
+        )
+        
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=mensaje_rechazo,
             parse_mode="HTML"
         )
-        logger.info(f"❌ Usuario {username} rechazado por {admin_username}")
+        logger.info(f"✅ Mensaje de rechazo enviado a {username}")
+    except Exception as e:
+        logger.error(f"❌ Error notificando rechazo a {user_id}: {e}")
+    
+    # ========== 3. ACTUALIZAR MENSAJE DEL ADMIN ==========
+    await query.edit_message_text(
+        f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
+        f"❌ <b>USUARIO RECHAZADO</b>\n"
+        f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n\n"
+        f"👤 Usuario: {username}\n"
+        f"🆔 ID: <code>{user_id}</code>\n"
+        f"👑 Admin: {admin_username}\n"
+        f"📅 Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+        f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀",
+        parse_mode="HTML"
+    )
+    
+    logger.info(f"❌ Usuario {username} rechazado por {admin_username}")
+
+# ================= 👑 DECISIONES DE ADMIN (OBSOLETO, MANTENIDO POR COMPATIBILIDAD) =================
+
+async def decision_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    👑 Manejador para aceptar/rechazar usuarios (OBSOLETO)
+    Mantenido por compatibilidad, pero ya no se usa.
+    Los handlers directos aceptar_usuario y rechazar_usuario tienen prioridad.
+    """
+    logger.warning("⚠️ decision_handler llamado - Esto es obsoleto, usar handlers directos")
+    query = update.callback_query
+    
+    try:
+        accion, user_id_str = query.data.split("_")
+        if accion == "aceptar":
+            await aceptar_usuario(update, context)
+        elif accion == "rechazar" or accion == "cancelar":
+            await rechazar_usuario(update, context)
+    except Exception as e:
+        logger.error(f"❌ Error en decision_handler: {e}")
+        await query.answer("❌ Error procesando solicitud", show_alert=True)
 
 # ================= 👑 PANEL DE ADMINISTRACIÓN - CON MANTENIMIENTO =================
 
@@ -1035,7 +1088,7 @@ async def admin_pendientes_handler(update: Update, context: ContextTypes.DEFAULT
             
             keyboard.append([
                 InlineKeyboardButton(f"✅ ACEPTAR {idx}", callback_data=f"aceptar_{user_id}"),
-                InlineKeyboardButton(f"❌ RECHAZAR {idx}", callback_data=f"cancelar_{user_id}")
+                InlineKeyboardButton(f"❌ RECHAZAR {idx}", callback_data=f"rechazar_{user_id}")
             ])
         
         if len(pendientes) > 10:
@@ -3184,6 +3237,8 @@ def obtener_conversation_handlers_admin():
 __all__ = [
     'start_handler',
     'decision_handler',
+    'aceptar_usuario',
+    'rechazar_usuario',
     'mostrar_panel_admin',
     'admin_callback_handler',
     'obtener_conversation_handlers_admin',
@@ -3215,5 +3270,5 @@ __all__ = [
     'backup_recibir_archivo_handler',
     'backup_listar_handler',
     'backup_limpiar_handler',
-    'toggle_mantenimiento_handler'  # 👈 NUEVO
+    'toggle_mantenimiento_handler'
 ]
