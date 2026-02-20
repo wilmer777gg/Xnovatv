@@ -455,17 +455,35 @@ def main():
     print("\n🚀 Iniciando bot...")
     print("=" * 60 + "\n")
     
-    # Decidir modo: webhook si WEBHOOK_URL está definida, sino polling
+    # ========== ARRANQUE CON FALLBACK AUTOMÁTICO ==========
     if WEBHOOK_URL and WEBHOOK_URL.strip():
-        logger.info(f"🌐 Iniciando webhook en 0.0.0.0:{PORT}")
-        app.run_webhook(
-            listen="0.0.0.0", 
-            port=PORT, 
-            url_path=TOKEN, 
-            webhook_url=f"{WEBHOOK_URL}/{TOKEN}"
-        )
+        try:
+            logger.info(f"🌐 Intentando iniciar en modo WEBHOOK en 0.0.0.0:{PORT}")
+            logger.info(f"📎 URL Configurada: {WEBHOOK_URL}/{TOKEN}")
+            
+            # Intentar webhook
+            app.run_webhook(
+                listen="0.0.0.0", 
+                port=PORT, 
+                url_path=TOKEN, 
+                webhook_url=f"{WEBHOOK_URL}/{TOKEN}"
+            )
+        except RuntimeError as e:
+            if "webhooks" in str(e) or "job-queue" in str(e):
+                logger.warning("⚠️ Webhook no disponible: falta instalar 'python-telegram-bot[webhooks]'")
+                logger.warning("📌 Solución: Actualiza requirements.txt a 'python-telegram-bot[webhooks,job-queue]==20.7'")
+                logger.warning("🔄 Cambiando automáticamente a modo POLLING como respaldo...")
+                app.run_polling()
+            else:
+                logger.error(f"❌ Error inesperado en webhook: {e}")
+                logger.warning("🔄 Intentando modo POLLING como respaldo...")
+                app.run_polling()
+        except Exception as e:
+            logger.error(f"❌ Error inesperado en webhook: {e}")
+            logger.warning("🔄 Intentando modo POLLING como respaldo...")
+            app.run_polling()
     else:
-        logger.info("🔄 WEBHOOK_URL no configurado, arrancando en polling")
+        logger.info("🔄 WEBHOOK_URL no configurado, arrancando en modo POLLING")
         app.run_polling()
 
 if __name__ == "__main__":

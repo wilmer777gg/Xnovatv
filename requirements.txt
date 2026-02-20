@@ -1,4 +1,7 @@
-python-telegram-bot==20.7
+# Telegram Bot con TODOS los extras
+python-telegram-bot[all]==20.7
+
+# Tus otras dependencias
 requests==2.31.0
 pytz==2023.3
 Flask==2.3.3
