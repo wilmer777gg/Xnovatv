@@ -11,8 +11,9 @@
 #🚀 ASTRO.IO v2.4.5 🚀
 #💾 database.py - GESTIÓN DE ARCHIVOS JSON CON PERSISTENCIA HÍBRIDA
 #=======================================
-#✅ Intenta GitHub primero
-#✅ Si falla, guarda/carga local automáticamente
+#✅ Versión CORREGIDA - 20 Feb 2026
+#✅ Detección automática de rama GitHub
+#✅ Sistema de fallback 100% funcional
 #=======================================
 
 import os
@@ -28,21 +29,50 @@ logger = logging.getLogger(__name__)
 
 # ================= CONSTANTES =================
 DATA_DIR = "data"
+os.makedirs(DATA_DIR, exist_ok=True)
 
 # ================= CONFIGURACIÓN DE GITHUB =================
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 GITHUB_OWNER = os.environ.get("GITHUB_OWNER")
 GITHUB_REPO = os.environ.get("GITHUB_REPO")
 GITHUB_API = "https://api.github.com"
-GITHUB_BRANCH = os.environ.get("GITHUB_BRANCH", "main")
 USE_GITHUB_SYNC = os.getenv("USE_GITHUB_SYNC", "false").lower() == "true"
 
+# ================= DETECCIÓN AUTOMÁTICA DE RAMA =================
+def detectar_rama_github() -> str:
+    """🔍 Detecta automáticamente la rama principal del repositorio"""
+    if not all([GITHUB_TOKEN, GITHUB_OWNER, GITHUB_REPO]):
+        return "main"
+    
+    headers = {"Accept": "application/vnd.github.v3+json"}
+    if GITHUB_TOKEN:
+        headers["Authorization"] = f"token {GITHUB_TOKEN}"
+    
+    # Intentar con main primero, luego master
+    for branch in ["main", "master"]:
+        try:
+            url = f"{GITHUB_API}/repos/{GITHUB_OWNER}/{GITHUB_REPO}/branches/{branch}"
+            response = requests.get(url, headers=headers, timeout=5)
+            
+            if response.status_code == 200:
+                logger.info(f"✅ Rama GitHub detectada: '{branch}'")
+                return branch
+        except:
+            continue
+    
+    logger.warning("⚠️ No se pudo detectar rama GitHub, usando 'main'")
+    return "main"
+
+# Detectar rama al iniciar
+GITHUB_BRANCH = detectar_rama_github()
 HEADERS = {"Accept": "application/vnd.github.v3+json"}
 if GITHUB_TOKEN:
     HEADERS["Authorization"] = f"token {GITHUB_TOKEN}"
 
 # Cache de SHAs para archivos en GitHub
 github_sha_cache = {}
+# Control de frecuencia para guardados
+last_save_time = {}
 
 # ================= FUNCIONES AUXILIARES DE GITHUB =================
 
@@ -51,29 +81,30 @@ def _get_file_from_github(path: str) -> Tuple[Optional[str], Optional[str]]:
     Obtiene contenido y SHA de un archivo en GitHub.
     Retorna (contenido, sha) o (None, None) si no existe o hay error.
     """
-    if not (GITHUB_OWNER and GITHUB_REPO and GITHUB_TOKEN):
+    if not USE_GITHUB_SYNC or not all([GITHUB_OWNER, GITHUB_REPO, GITHUB_TOKEN]):
         return None, None
 
     url = f"{GITHUB_API}/repos/{GITHUB_OWNER}/{GITHUB_REPO}/contents/{path}?ref={GITHUB_BRANCH}"
     
     try:
-        r = requests.get(url, headers=HEADERS, timeout=15)
+        r = requests.get(url, headers=HEADERS, timeout=10)
         
         if r.status_code == 200:
             data = r.json()
             content = base64.b64decode(data["content"]).decode("utf-8")
+            logger.info(f"☁️ Archivo encontrado en GitHub: {path}")
             return content, data.get("sha")
         elif r.status_code == 404:
-            # Archivo no existe en GitHub
+            logger.debug(f"ℹ️ Archivo no existe en GitHub: {path}")
             return None, None
         else:
-            logger.warning(f"Error GitHub {r.status_code}: {r.text[:100]}")
+            logger.warning(f"⚠️ Error GitHub {r.status_code}: {r.text[:100]}")
             return None, None
     except requests.exceptions.Timeout:
-        logger.warning("Timeout conectando con GitHub")
+        logger.debug("⏱️ Timeout conectando con GitHub")
         return None, None
     except Exception as e:
-        logger.warning(f"Error obteniendo archivo de GitHub: {e}")
+        logger.debug(f"ℹ️ Error obteniendo archivo de GitHub: {e}")
         return None, None
 
 def _put_file_to_github(path: str, content_str: str, sha: Optional[str] = None) -> Tuple[bool, Optional[str]]:
@@ -81,14 +112,14 @@ def _put_file_to_github(path: str, content_str: str, sha: Optional[str] = None) 
     Guarda un archivo en GitHub.
     Retorna (éxito, nuevo_sha)
     """
-    if not (GITHUB_OWNER and GITHUB_REPO and GITHUB_TOKEN):
+    if not USE_GITHUB_SYNC or not all([GITHUB_OWNER, GITHUB_REPO, GITHUB_TOKEN]):
         return False, None
 
     url = f"{GITHUB_API}/repos/{GITHUB_OWNER}/{GITHUB_REPO}/contents/{path}"
     b64_content = base64.b64encode(content_str.encode("utf-8")).decode("utf-8")
 
     payload = {
-        "message": f"Actualización automática: {path} - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        "message": f"Auto-backup: {path} - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
         "content": b64_content,
         "branch": GITHUB_BRANCH
     }
@@ -96,45 +127,47 @@ def _put_file_to_github(path: str, content_str: str, sha: Optional[str] = None) 
         payload["sha"] = sha
 
     try:
-        r = requests.put(url, headers=HEADERS, json=payload, timeout=15)
+        r = requests.put(url, headers=HEADERS, json=payload, timeout=10)
         
         if r.status_code in (200, 201):
             result = r.json()
             new_sha = result.get("content", {}).get("sha")
+            logger.info(f"☁️ Guardado en GitHub: {path}")
             return True, new_sha
         else:
-            logger.warning(f"Error guardando en GitHub: {r.status_code} - {r.text[:100]}")
+            logger.warning(f"⚠️ Error guardando en GitHub ({r.status_code}): {r.text[:100]}")
             return False, None
     except requests.exceptions.Timeout:
-        logger.warning("Timeout guardando en GitHub")
+        logger.debug("⏱️ Timeout guardando en GitHub")
         return False, None
     except Exception as e:
-        logger.warning(f"Error guardando en GitHub: {e}")
+        logger.debug(f"ℹ️ Error guardando en GitHub: {e}")
         return False, None
 
 # ================= FUNCIONES AUXILIARES LOCALES =================
 
-def _get_file_local(path: str) -> Tuple[Optional[str], None]:
+def _get_file_local(filepath: str) -> Tuple[Optional[str], None]:
     """Lee un archivo local"""
-    if not os.path.exists(path):
+    if not os.path.exists(filepath):
         return None, None
     
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(filepath, "r", encoding="utf-8") as f:
             return f.read(), None
     except Exception as e:
-        logger.warning(f"Error leyendo archivo local {path}: {e}")
+        logger.warning(f"⚠️ Error leyendo archivo local {filepath}: {e}")
         return None, None
 
-def _put_file_local(path: str, content_str: str) -> bool:
+def _put_file_local(filepath: str, content_str: str) -> bool:
     """Guarda un archivo local"""
     try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        with open(filepath, "w", encoding="utf-8") as f:
             f.write(content_str)
+        logger.info(f"📁 Guardado en local: {filepath}")
         return True
     except Exception as e:
-        logger.error(f"Error guardando archivo local {path}: {e}")
+        logger.error(f"❌ Error guardando archivo local {filepath}: {e}")
         return False
 
 # ================= FUNCIONES PRINCIPALES CON FALLBACK =================
@@ -142,7 +175,7 @@ def _put_file_local(path: str, content_str: str) -> bool:
 def load_json(filepath: str, default: Any = None) -> Any:
     """
     CARGA CON FALLBACK:
-    1️⃣ Intenta desde GitHub
+    1️⃣ Intenta desde GitHub (si está activado)
     2️⃣ Si falla, intenta desde local
     3️⃣ Si todo falla, retorna valor por defecto
     """
@@ -152,10 +185,8 @@ def load_json(filepath: str, default: Any = None) -> Any:
     else:
         github_path = os.path.basename(filepath)
     
-    github_success = False
-    
     # ========== 1️⃣ INTENTAR DESDE GITHUB ==========
-    if USE_GITHUB_SYNC and GITHUB_TOKEN:
+    if USE_GITHUB_SYNC:
         try:
             content, sha = _get_file_from_github(github_path)
             if content is not None:
@@ -163,33 +194,30 @@ def load_json(filepath: str, default: Any = None) -> Any:
                 # Guardar SHA en caché para futuras escrituras
                 if sha:
                     github_sha_cache[filepath] = sha
-                logger.info(f"✅ Cargado desde GitHub: {github_path}")
                 return data
-            else:
-                logger.info(f"ℹ️ Archivo no encontrado en GitHub, se usará local: {github_path}")
         except Exception as e:
-            logger.warning(f"⚠️ Error cargando desde GitHub: {e}")
+            logger.debug(f"ℹ️ Error cargando desde GitHub: {e}")
     
     # ========== 2️⃣ FALLBACK A LOCAL ==========
     try:
         if os.path.exists(filepath):
             with open(filepath, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                logger.info(f"📁 Cargado desde local: {filepath}")
                 return data
     except Exception as e:
-        logger.error(f"❌ Error cargando desde local: {e}")
+        logger.debug(f"ℹ️ Error cargando desde local: {e}")
     
     # ========== 3️⃣ VALOR POR DEFECTO ==========
-    logger.info(f"🆕 Usando valor por defecto para: {filepath}")
-    return default if default is not None else ({} if filepath.endswith('.json') else [])
+    if default is not None:
+        return default
+    return {} if filepath.endswith('.json') else []
 
 def save_json(filepath: str, data: Any) -> bool:
     """
     GUARDA CON FALLBACK:
-    1️⃣ Intenta en GitHub
+    1️⃣ Intenta en GitHub (si está activado)
     2️⃣ SIEMPRE guarda en local como respaldo
-    3️⃣ Retorna True si al menos un método funcionó
+    3️⃣ Retorna True si al menos LOCAL funcionó
     """
     # Determinar ruta relativa para GitHub
     if filepath.startswith(DATA_DIR):
@@ -202,19 +230,13 @@ def save_json(filepath: str, data: Any) -> bool:
     
     # Control de frecuencia para evitar sobrecarga
     current_time = time.time()
-    cache_key = f"last_save_{filepath}"
-    last_save = getattr(save_json, cache_key, 0)
-    
-    if current_time - last_save < 1:  # Mínimo 1 segundo entre guardados
-        return True
-    
-    setattr(save_json, cache_key, current_time)
-    
-    github_success = False
-    local_success = False
+    if filepath in last_save_time:
+        if current_time - last_save_time[filepath] < 1:  # Mínimo 1 segundo
+            return True
+    last_save_time[filepath] = current_time
     
     # ========== 1️⃣ INTENTAR EN GITHUB ==========
-    if USE_GITHUB_SYNC and GITHUB_TOKEN:
+    if USE_GITHUB_SYNC:
         try:
             # Obtener SHA de caché
             sha = github_sha_cache.get(filepath)
@@ -222,31 +244,19 @@ def save_json(filepath: str, data: Any) -> bool:
             # Guardar en GitHub
             success, new_sha = _put_file_to_github(github_path, content_str, sha)
             
-            if success:
-                github_success = True
-                if new_sha:
-                    github_sha_cache[filepath] = new_sha
-                logger.info(f"✅ Guardado en GitHub: {github_path}")
-            else:
-                logger.warning(f"⚠️ Falló guardado en GitHub, usando solo local: {github_path}")
+            if success and new_sha:
+                github_sha_cache[filepath] = new_sha
         except Exception as e:
-            logger.warning(f"⚠️ Error guardando en GitHub: {e}")
+            logger.debug(f"ℹ️ Error guardando en GitHub: {e}")
     
     # ========== 2️⃣ SIEMPRE GUARDAR EN LOCAL ==========
     try:
         os.makedirs(os.path.dirname(filepath), exist_ok=True)
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(content_str)
-        local_success = True
-        logger.info(f"📁 Guardado en local: {filepath}")
+        return True
     except Exception as e:
         logger.error(f"❌ Error guardando en local: {e}")
-    
-    # ========== 3️⃣ RESULTADO ==========
-    if github_success or local_success:
-        return True
-    else:
-        logger.error(f"❌ No se pudo guardar en ningún lado: {filepath}")
         return False
 
 # ================= FUNCIONES DE UTILIDAD =================
