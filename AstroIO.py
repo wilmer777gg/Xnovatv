@@ -1,14 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/python3
 # -*- coding: utf-8 -*-
 
-#██████╗ ███████╗████████╗██████╗  █████╗ ██╗     ███████╗
-#██╔══██╗██╔════╝╚══██╔══╝██╔══██╗██╔══██╗██║     ██╔════╝
-#██████╔╝███████╗   ██║   ██████╔╝███████║██║     ███████╗
-#██╔══██╗╚════██║   ██║   ██╔══██╗██╔══██║██║     ╚════██║
-#██║  ██║███████║   ██║   ██║  ██║██║  ██║███████╗███████║
-#╚═╝  ╚═╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚══════╝
-
-#🚀 ASTRO.IO v2.4.5 🚀
+#█▓▒░ ASTRO.IO v2.4.5 █▓▒░
 # Versión v2.3.7 - AstroIO.py
 # Desarrollado por @Neith07 y @Holows
 
@@ -413,9 +406,6 @@ def main():
     # ✅ Handler general para todos los demás callbacks
     app.add_handler(CallbackQueryHandler(callback_handler))
     
-    # ❌ El antiguo decision_handler ya no es necesario
-    # app.add_handler(CallbackQueryHandler(decision_handler, pattern="^(aceptar_|cancelar_).*$"))
-    
     # ========== MENSAJES DE TEXTO ==========
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_mensajes_handler))
     
@@ -466,13 +456,17 @@ def main():
     print("=" * 60 + "\n")
     
     # Decidir modo: webhook si WEBHOOK_URL está definida, sino polling
-    # Arranque
-    if WEBHOOK_URL:
-        logger.info("Iniciando webhook en %s:%s", "0.0.0.0", PORT)
-        app.run_webhook(listen="0.0.0.0", port=PORT, url_path=TOKEN, webhook_url=f"{WEBHOOK_URL}")
+    if WEBHOOK_URL and WEBHOOK_URL.strip():
+        logger.info(f"🌐 Iniciando webhook en 0.0.0.0:{PORT}")
+        app.run_webhook(
+            listen="0.0.0.0", 
+            port=PORT, 
+            url_path=TOKEN, 
+            webhook_url=f"{WEBHOOK_URL}/{TOKEN}"
+        )
     else:
-        logger.info("WEBHOOK_URL no configurado, arrancando en polling.")
-        application.run_polling()
+        logger.info("🔄 WEBHOOK_URL no configurado, arrancando en polling")
+        app.run_polling()
 
 if __name__ == "__main__":
     try:
