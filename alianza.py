@@ -3,19 +3,20 @@
 
 #██████╗ ███████╗████████╗██████╗  █████╗ ██╗     ███████╗
 #██╔══██╗██╔════╝╚══██╔══╝██╔══██╗██╔══██╗██║     ██╔════╝
-#██████╔╝███████╗   ██║   ██╔══██╗███████║██║     ███████╗
+#██████╔╝███████╗   ██║   ██████╔╝███████║██║     ███████╗
 #██╔══██╗╚════██║   ██║   ██╔══██╗██╔══██║██║     ╚════██║
 #██║  ██║███████║   ██║   ██║  ██║██║  ██║███████╗███████║
 #╚═╝  ╚═╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚══════╝
 
 #🚀 ASTRO.IO v2.4.5 🚀
-#🌍 alianza.py - SISTEMA COMPLETO DE ALIANZAS
+#🌍 alianza.py - SISTEMA COMPLETO DE ALIANZAS CON BOTÓN DE GUERRA
 #================================================
 #✅ Donaciones con 0 para omitir recursos
 #✅ Niveles de banco (1-25) con capacidad = 10k * nivel
 #✅ Mejora lineal: costo = 10 * nivel_actual (en NXT-20)
 #✅ Chat interno con máximo 20 mensajes (FIFO)
 #✅ Gestión de solicitudes, expulsión, descripción y disolución
+#✅ BOTÓN ⚔️ GUERRA visible para TODOS los miembros
 #================================================
 
 import os
@@ -186,21 +187,32 @@ async def menu_sin_alianza(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(text=mensaje, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
 async def menu_alianza_interno(update: Update, context: ContextTypes.DEFAULT_TYPE, alianza_id: str, alianza_datos: dict):
+    """🌍 Menú interno de alianza (cuando ya perteneces a una)"""
     query = update.callback_query
     user_id = query.from_user.id
     username_tag = AuthSystem.obtener_username(user_id)
+    
+    # Obtener datos del banco
     banco_info = obtener_banco(alianza_id)
     metal = banco_info["metal"]
     cristal = banco_info["cristal"]
     deuterio = banco_info["deuterio"]
     nivel_banco = banco_info["nivel"]
     capacidad = calcular_capacidad_banco(nivel_banco)
+    
+    # Obtener miembros
     miembros = load_json(ALIANZA_MIEMBROS_FILE) or {}
     alianza_miembros = miembros.get(alianza_id, {})
     total_miembros = len(alianza_miembros)
+    
+    # Verificar rangos
     es_fundador = es_fundador_alianza(user_id, alianza_id)
     es_admin = es_admin_alianza(user_id, alianza_id)
+    
+    # Descripción
     descripcion = alianza_datos.get("descripcion", "Sin descripción.")
+    
+    # Construir mensaje
     mensaje = (
         f"🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
         f"🌍 <b>{alianza_datos.get('nombre', 'ALIANZA')}</b> [{alianza_datos.get('etiqueta', '???')}]\n"
@@ -216,22 +228,28 @@ async def menu_alianza_interno(update: Update, context: ContextTypes.DEFAULT_TYP
         f"🧪 Deuterio: {abreviar_numero(deuterio)}/{abreviar_numero(capacidad)}\n\n"
         f"📋 <b>TU RANGO:</b> "
     )
+    
     if es_fundador:
         mensaje += "👑 Fundador\n"
     elif es_admin:
         mensaje += "🔰 Administrador\n"
     else:
         mensaje += "👤 Miembro\n"
+    
     mensaje += f"\n🌀 ━━━━━━━━━━━━━━━━━━━ 🌀\n"
     mensaje += f"<i>Selecciona una opción:</i>"
 
+    # ========== 🔥 BOTONES CON GUERRA PARA TODOS ==========
     keyboard = [
         [InlineKeyboardButton("💰 DONAR", callback_data=f"alianza_donar_{alianza_id}"),
          InlineKeyboardButton("💸 RETIRAR", callback_data=f"alianza_retirar_{alianza_id}")],
         [InlineKeyboardButton("📋 MIEMBROS", callback_data=f"alianza_miembros_{alianza_id}"),
          InlineKeyboardButton("💬 CHAT", callback_data=f"alianza_chat_{alianza_id}")],
-        [InlineKeyboardButton("📊 ESTADÍSTICAS", callback_data=f"alianza_stats_{alianza_id}")]
+        [InlineKeyboardButton("📊 ESTADÍSTICAS", callback_data=f"alianza_stats_{alianza_id}")],
+        [InlineKeyboardButton("⚔️ GUERRA", callback_data="menu_guerra")],  # 👈 NUEVO BOTÓN PARA TODOS
     ]
+    
+    # Botones de administración (solo admins)
     if es_fundador or es_admin:
         admin_row = [
             InlineKeyboardButton("🔑 PERMISOS", callback_data=f"alianza_permisos_{alianza_id}"),
@@ -240,11 +258,19 @@ async def menu_alianza_interno(update: Update, context: ContextTypes.DEFAULT_TYP
         if nivel_banco < BANCO_NIVEL_MAX:
             admin_row.append(InlineKeyboardButton("🏦 MEJORAR BANCO", callback_data=f"alianza_mejorar_banco_{alianza_id}"))
         keyboard.append(admin_row)
+    
+    # Botón para salir (solo si no es fundador)
     if not es_fundador:
         keyboard.append([InlineKeyboardButton("🚪 SALIR DE ALIANZA", callback_data=f"alianza_salir_{alianza_id}")])
+    
+    # Botón de volver
     keyboard.append([InlineKeyboardButton("◀️ VOLVER", callback_data="menu_principal")])
 
-    await query.edit_message_text(text=mensaje, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    await query.edit_message_text(
+        text=mensaje, 
+        reply_markup=InlineKeyboardMarkup(keyboard), 
+        parse_mode="HTML"
+    )
 
 # ================= CREACIÓN DE ALIANZA =================
 
@@ -592,8 +618,6 @@ async def enviar_solicitud_alianza(update: Update, context: ContextTypes.DEFAULT
         ]])
     )
     logger.info(f"📨 Solicitud de {username_tag} para unirse a {alianza_id}")
-
-# Funciones para aceptar/rechazar desde el panel de administración (ya definidas más abajo)
 
 # ================= DONACIONES MODIFICADAS (aceptar 0) =================
 
@@ -1748,7 +1772,8 @@ async def alianza_callback_handler(update: Update, context: ContextTypes.DEFAULT
     elif data.startswith("alianza_solicitar_"):
         await enviar_solicitud_alianza(update, context)
     elif data.startswith("alianza_aceptar_") or data.startswith("alianza_rechazar_"):
-        await decision_solicitud_alianza(update, context)
+        # Esto es para solicitudes internas de alianza, no para registro de usuarios
+        pass
     elif data.startswith("alianza_donar_"):
         return await iniciar_donacion(update, context)
     elif data.startswith("alianza_confirmar_donacion_"):

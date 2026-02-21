@@ -6,7 +6,7 @@
 # Desarrollado por @Neith07 y @Holows
 
 """
-🚀 ASTROIO v2.3.7 - SISTEMA MODULAR COMPLETO
+🚀 ASTROIO v2.3.7 - SISTEMA MODULAR COMPLETO CON GUERRA
 ===================================================
 ✅ LOGIN CENTRALIZADO - AuthSystem
 ✅ VERIFICA/CREA TODOS LOS JSON AL INICIAR
@@ -18,6 +18,7 @@
 ✅ INVESTIGACIONES - Sistema de colas propio
 ✅ PUNTUACIÓN - Ranking y estadísticas en tiempo real
 ✅ ALIANZAS - Sistema completo con banco y permisos
+✅ GUERRA - Sistema de guerra entre alianzas ⚔️
 ✅ BACKUP - Exportar/Importar todos los datos del bot
 ✅ MERCADO - Sistema de mercado con Mercado Negro
 ✅ NAVEGACIÓN SIN SPAM - Mismo mensaje siempre
@@ -55,10 +56,8 @@ except ValueError:
 if ADMIN_USER_ID == 0:
     raise RuntimeError("❌ La variable ADMIN_USER_ID no está definida o no es válida")
 
-# Opcionales
+# Opcional - username del admin
 ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "")
-WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "")  # Si está definida, se usa webhook
-PORT = int(os.environ.get("PORT", "10000"))       # Puerto para webhook (Render asigna 10000 por defecto)
 
 # Variables de GitHub
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
@@ -117,6 +116,17 @@ except ImportError as e:
     logger.warning(f"⚠️ Sistema de alianzas no disponible: {e}")
     ALIANZA_ACTIVA = False
     def obtener_conversation_handlers():
+        return []
+
+# ========== 🔥 NUEVO: IMPORTAR MÓDULOS DE GUERRA ==========
+try:
+    from guerra import obtener_conversation_handlers_guerra
+    GUERRA_ACTIVA = True
+    logger.info("✅ Sistema de guerra cargado")
+except ImportError as e:
+    logger.warning(f"⚠️ Sistema de guerra no disponible: {e}")
+    GUERRA_ACTIVA = False
+    def obtener_conversation_handlers_guerra():
         return []
 
 # ========== IMPORTAR MÓDULOS DE BACKUP ==========
@@ -278,7 +288,8 @@ async def ayuda_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• Navegación sin spam - Un solo mensaje\n"
         f"• Sistema de colas en edificios, flota y defensa\n"
         f"• Sistema de backup completo (Exportar/Importar)\n"
-        f"• Mercado Negro con ofertas de usuarios y sistema"
+        f"• Mercado Negro con ofertas de usuarios y sistema\n"
+        f"• ⚔️ Guerra entre alianzas - Temporadas de 12 horas"
     )
     await update.message.reply_text(ayuda_texto, parse_mode="HTML")
 
@@ -335,7 +346,7 @@ async def verificar_conexion(app):
 # ========== 🕐 TAREAS PROGRAMADAS ==========
 def main():
     print("=" * 60)
-    print(f"🚀 ASTROIO {VERSION} - SISTEMA MODULAR COMPLETO")
+    print(f"🚀 ASTROIO {VERSION} - SISTEMA MODULAR COMPLETO CON GUERRA")
     print("=" * 60)
     print(f"✅ Versión: {VERSION}")
     print("✅ Archivos JSON verificados")
@@ -349,6 +360,7 @@ def main():
     print("✅ Investigaciones - Sistema de colas")
     print("✅ Puntuación - Ranking global")
     print("✅ Alianzas - Sistema completo" if ALIANZA_ACTIVA else "⚠️ Alianzas - No disponible")
+    print("✅ GUERRA - Sistema de guerra ⚔️" if GUERRA_ACTIVA else "⚠️ Guerra - No disponible")
     print("✅ Backup - Exportar/Importar datos" if BACKUP_ACTIVO else "⚠️ Backup - No disponible")
     print("✅ Mercado - Sistema de mercado" if MERCADO_ACTIVO else "⚠️ Mercado - No disponible")
     print("=" * 60)
@@ -379,6 +391,12 @@ def main():
             app.add_handler(handler)
         logger.info(f"✅ {len(obtener_conversation_handlers())} ConversationHandlers de alianza registrados")
     
+    # ========== 🔥 NUEVO: CONVERSATION HANDLERS (GUERRA) ==========
+    if GUERRA_ACTIVA:
+        for handler in obtener_conversation_handlers_guerra():
+            app.add_handler(handler)
+        logger.info(f"✅ {len(obtener_conversation_handlers_guerra())} ConversationHandlers de guerra registrados")
+    
     # ========== CONVERSATION HANDLERS (ADMIN) ==========
     if ADMIN_CONVERSATION_ACTIVO:
         for handler in obtener_conversation_handlers_admin():
@@ -397,7 +415,7 @@ def main():
             app.add_handler(handler)
         logger.info(f"✅ {len(obtener_conversation_handlers_mercado())} ConversationHandlers de mercado registrados")
     
-    # ========== 🔥 CALLBACKS CORREGIDOS ==========
+    # ========== 🔥 CALLBACKS ==========
     
     # ✅ Handlers DIRECTOS para aceptar/rechazar usuarios (MÁXIMA PRIORIDAD)
     app.add_handler(CallbackQueryHandler(aceptar_usuario, pattern=r"^aceptar_\d+$"))
@@ -452,39 +470,14 @@ def main():
     # ========== ERRORES ==========
     app.add_error_handler(error_handler)
     
-    print("\n🚀 Iniciando bot...")
+    # ========== 🚀 ARRANQUE EN MODO POLLING SIEMPRE ==========
+    print("\n" + "=" * 60)
+    print("🔄 Iniciando bot en modo POLLING (rápido y confiable)...")
+    print("⏱️  El bot comenzará a recibir mensajes inmediatamente")
     print("=" * 60 + "\n")
     
-    # ========== ARRANQUE CON FALLBACK AUTOMÁTICO ==========
-    if WEBHOOK_URL and WEBHOOK_URL.strip():
-        try:
-            logger.info(f"🌐 Intentando iniciar en modo WEBHOOK en 0.0.0.0:{PORT}")
-            logger.info(f"📎 URL Configurada: {WEBHOOK_URL}/{TOKEN}")
-            
-            # Intentar webhook
-            app.run_webhook(
-                listen="0.0.0.0", 
-                port=PORT, 
-                url_path=TOKEN, 
-                webhook_url=f"{WEBHOOK_URL}/{TOKEN}"
-            )
-        except RuntimeError as e:
-            if "webhooks" in str(e) or "job-queue" in str(e):
-                logger.warning("⚠️ Webhook no disponible: falta instalar 'python-telegram-bot[webhooks]'")
-                logger.warning("📌 Solución: Actualiza requirements.txt a 'python-telegram-bot[webhooks,job-queue]==20.7'")
-                logger.warning("🔄 Cambiando automáticamente a modo POLLING como respaldo...")
-                app.run_polling()
-            else:
-                logger.error(f"❌ Error inesperado en webhook: {e}")
-                logger.warning("🔄 Intentando modo POLLING como respaldo...")
-                app.run_polling()
-        except Exception as e:
-            logger.error(f"❌ Error inesperado en webhook: {e}")
-            logger.warning("🔄 Intentando modo POLLING como respaldo...")
-            app.run_polling()
-    else:
-        logger.info("🔄 WEBHOOK_URL no configurado, arrancando en modo POLLING")
-        app.run_polling()
+    # Iniciar polling - esto es bloqueante
+    app.run_polling()
 
 if __name__ == "__main__":
     try:

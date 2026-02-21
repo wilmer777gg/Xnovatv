@@ -15,6 +15,7 @@
 #✅ MANEJO CORRECTO de solicitudes pendientes
 #✅ NUEVO CALLBACK PARA MANTENIMIENTO
 #✅ INTEGRACIÓN CON MERCADO
+#✅ NUEVA SECCIÓN PARA GUERRA ⚔️
 #⚠️ LOS CALLBACKS DE ADMIN (aceptar_/rechazar_) SON MANEJADOS DIRECTAMENTE EN AstroIO.py
 #===========================================================
 
@@ -64,6 +65,9 @@ from base_flotas import (
 )
 from mercado import mercado_callback_handler
 
+# ========== 🔥 NUEVA IMPORTACIÓN PARA GUERRA ==========
+from guerra import guerra_callback_handler
+
 logger = logging.getLogger(__name__)
 
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -86,6 +90,13 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Estos son manejados por handlers directos en AstroIO.py
         return
     """
+    
+    # ========== 🎯 GUERRA - NUEVA SECCIÓN ==========
+    # Todos los callbacks de guerra comienzan con "guerra_" o son "menu_guerra"
+    if data == "menu_guerra" or data.startswith("guerra_"):
+        logger.info(f"⚔️ Callback de guerra: {data}")
+        await guerra_callback_handler(update, context)
+        return
     
     # ========== MENÚ PRINCIPAL ==========
     if data == "menu_principal":
